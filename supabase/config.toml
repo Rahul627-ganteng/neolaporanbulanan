@@ -1,0 +1,25 @@
+# Konfigurasi Supabase CLI (lokal & deploy). Nilai lain memakai bawaan CLI.
+project_id = "kmi-laporan-gontor3"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+major_version = 15
+
+[auth]
+enabled = true
+site_url = "http://localhost:5173"
+additional_redirect_urls = ["http://localhost:5173"]
+# Hanya admin yang punya akun; akun dibuat dari dashboard Supabase.
+enable_signup = false
+
+[functions.weekly-reminder]
+# pg_cron memanggil dengan CRON_SECRET (bukan JWT), jadi verifikasi JWT bawaan dimatikan;
+# fungsi memeriksa secret / status admin sendiri.
+verify_jwt = false

@@ -1,0 +1,38 @@
+# =====================================================================
+#  Netlify — konfigurasi build & hosting (dipakai Git-integration Netlify
+#  maupun `netlify deploy` dari GitHub Actions).
+# =====================================================================
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
+  NPM_FLAGS = "--no-audit --no-fund"
+  # VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY, VITE_PORTAL_URL diinjeksikan dari
+  # Site configuration → Environment variables (atau `netlify env:set`, lihat README).
+  # Anon key memang publik (dilindungi RLS); jangan pernah menaruh service_role key di sini.
+
+# Pratinjau PR memakai proyek Supabase yang sama kecuali diganti di UI Netlify
+[context.deploy-preview.environment]
+  VITE_PORTAL_URL = ""
+
+# SPA: semua rute dilayani index.html
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=()"
+    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://fonts.googleapis.com https://fonts.gstatic.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"

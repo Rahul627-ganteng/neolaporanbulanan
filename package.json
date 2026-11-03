@@ -1,0 +1,36 @@
+{
+  "name": "kmi-laporan-bulanan-gontor3",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Sistem Informasi & Portal Pelaporan Bulanan Sektor Guru KMI - PMDG Kampus 3 Darul Ma'rifat",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "build:artifact": "node scripts/build-artifact.mjs",
+    "db:push": "supabase db push",
+    "fn:deploy": "supabase functions deploy weekly-reminder --no-verify-jwt"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.4",
+    "docx": "^9.5.0",
+    "html-to-image": "^1.11.13",
+    "jszip": "^3.10.1",
+    "lucide-react": "^0.263.1",
+    "pdf-lib": "^1.17.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "recharts": "^2.12.7"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.11",
+    "@vitejs/plugin-react": "^4.4.1",
+    "esbuild": "^0.25.0",
+    "tailwindcss": "^4.1.11",
+    "vite": "^6.3.5"
+  }
+}
