@@ -44,7 +44,12 @@ export function createSupabaseAdapter() {
       return sessionInfo(data.session);
     },
     onAuthChange(cb) {
-      const { data } = sb.auth.onAuthStateChange(async (_e, session) => cb(await sessionInfo(session)));
+      // Jangan memanggil API Supabase langsung di dalam callback auth (bisa deadlock);
+      // tunda ke tick berikutnya. TOKEN_REFRESHED tidak mengubah status admin.
+      const { data } = sb.auth.onAuthStateChange((event, session) => {
+        if (event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') return;
+        setTimeout(async () => cb(await sessionInfo(session)), 0);
+      });
       return () => data.subscription.unsubscribe();
     },
     async signIn(email, password) {

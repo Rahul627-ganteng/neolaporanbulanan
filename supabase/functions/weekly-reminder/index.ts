@@ -6,8 +6,9 @@
 //  Pesan tidak dikirim di sini — admin mengirimnya manual (human-in-the-loop).
 //
 //  Deploy:  supabase functions deploy weekly-reminder --no-verify-jwt
-//  Secret:  supabase secrets set CRON_SECRET=<sama dengan secret Vault cron_secret>
-//           supabase secrets set PORTAL_URL=https://<situs-anda>.netlify.app   (opsional)
+//  Otorisasi pg_cron: token dicocokkan ke secret Vault `cron_secret`
+//  (lihat migrasi 4). CRON_SECRET di env fungsi bersifat opsional.
+//  Opsional: supabase secrets set PORTAL_URL=https://<situs-anda>.netlify.app
 // =====================================================================
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import {
@@ -43,13 +44,20 @@ Deno.serve(async (req) => {
   const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
   const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
   const CRON_SECRET = Deno.env.get('CRON_SECRET') ?? '';
-  const PORTAL_URL = Deno.env.get('PORTAL_URL') ?? '';
+  const PORTAL_URL = Deno.env.get('PORTAL_URL') ?? 'https://neolaporanbulanan.netlify.app';
 
-  // --- Otorisasi: secret pg_cron ATAU admin yang sedang login ---
+  const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+
+  // --- Otorisasi: secret pg_cron (env atau Vault) ATAU admin yang sedang login ---
   const authHeader = req.headers.get('Authorization') ?? '';
   const token = authHeader.replace(/^Bearer\s+/i, '');
   let source: 'cron' | 'admin' = 'cron';
-  if (!CRON_SECRET || token !== CRON_SECRET) {
+  let isCron = Boolean(CRON_SECRET) && token === CRON_SECRET;
+  if (!isCron && token) {
+    const { data: ok } = await db.rpc('check_cron_secret', { p_token: token });
+    isCron = ok === true;
+  }
+  if (!isCron) {
     const asUser = createClient(SUPABASE_URL, ANON_KEY, {
       global: { headers: { Authorization: authHeader } },
       auth: { persistSession: false },
@@ -62,7 +70,6 @@ Deno.serve(async (req) => {
   let body: { force?: boolean; week?: number } = {};
   try { body = await req.json(); } catch { /* body opsional */ }
 
-  const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' }).format(new Date());
 
   // --- Siklus aktif & minggu rundown ---

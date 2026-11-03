@@ -21,6 +21,8 @@ supabase/
     20261103000001_schema.sql       tabel, RLS, RPC (open_new_cycle, submit_report, …)
     20261103000002_seed_departments.sql   48 bagian + tahun ajaran 2026-2027 / 1447-1448
     20261103000003_cron_reminders.sql     pg_cron harian 06.05 WIB → Edge Function
+    20261104000001_cron_secret_admin_allowlist.sql  verifikasi secret lewat Vault + daftar email admin
+    20261104000002_hardening.sql          indeks FK & RLS per aksi (saran Supabase Advisor)
   functions/
     _shared/rundown.js              aturan rundown & template WA (dipakai frontend + Edge Function)
     weekly-reminder/index.ts        menyiapkan antrean pengingat setiap pergantian minggu
@@ -36,7 +38,7 @@ scripts/build-artifact.mjs          membangun prototipe single-file dari kode ya
 - `monthly_reports` — Hasil Usaha, Kendala (berkategori), Solusi, status, dan cap waktu tahapan rundown (rapat bagian, draf ke Guru Senior, persetujuan Pembimbing, softfile, hardfile Staf Sekretaris Wakil Pengasuh).
 - `priority_programs` — Program Kerja Satu Bulan ke Depan + klasifikator 🌟 Unggulan / 🚀 Inovasi / 🛠️ Tindak Lanjut / 📌 Reguler.
 - `notification_queue` — antrean pengingat WA (diisi pg_cron atau admin, dikirim manual).
-- `app_admins` — akun Supabase Auth yang berhak mengelola.
+- `app_admins` — akun Supabase Auth yang berhak mengelola; diisi otomatis dari `app_admin_emails`.
 
 ---
 
@@ -83,13 +85,19 @@ Push repositori, lalu isi **Settings → Secrets and variables → Actions**:
 | `VITE_PORTAL_URL` | alamat situs (opsional, dicantumkan di pesan WA) |
 | `NETLIFY_AUTH_TOKEN` / `NETLIFY_SITE_ID` | dari langkah 2 |
 
-Setiap push ke `main` menjalankan: build & uji → `supabase db push` → deploy Edge Function `weekly-reminder` + secret → sinkron Vault → `netlify deploy --prod`. Pull request hanya di-build.
+Setiap push ke `main` menjalankan: build & uji → deploy Edge Function `weekly-reminder` + secret → `supabase db push` (bila sandi database benar; bila salah hanya peringatan). Netlify yang terhubung ke repo membangun & merilis situs sendiri dari `netlify.toml`; job `Deploy Netlify (manual)` di Actions hanya untuk rilis manual. Pull request hanya di-build.
 
-### 4. Daftarkan admin (sekali, di SQL Editor)
+### 4. Daftarkan admin & aktifkan pg_cron (sekali, di SQL Editor)
 ```sql
-insert into public.app_admins (user_id, nama)
-select id, 'Admin Sektor Guru KMI' from auth.users where email = 'admin@contoh.sch.id';
+-- Email yang terdaftar otomatis menjadi admin, untuk akun lama maupun yang dibuat nanti
+insert into public.app_admin_emails (email, catatan) values
+  ('admin@contoh.sch.id', 'Admin Sektor Guru KMI')
+on conflict (email) do nothing;
+
+-- Buat secret Vault project_url + cron_secret acak untuk pengingat otomatis
+select public.ensure_cron_setup('https://<ref>.supabase.co');
 ```
+Akun admin dibuat di **Authentication → Users → Add user** (centang *Auto Confirm User*).
 
 ### 5. Mulai pakai
 1. Masuk sebagai admin → **Periode → Buka Periode Bulan Baru** (tanggal awal bulan dihitung dari Umm al-Qura; sesuaikan dengan penetapan pondok bila berbeda).
@@ -99,7 +107,7 @@ select id, 'Admin Sektor Guru KMI' from auth.users where email = 'admin@contoh.s
 ---
 
 ## Otomatisasi pengingat (pg_cron + Edge Function)
-- Setiap hari 06.05 WIB, `cron.schedule('kmi-weekly-reminder')` memanggil `public.trigger_weekly_reminder()` → `net.http_post` ke Edge Function dengan `CRON_SECRET` dari Vault.
+- Setiap hari 06.05 WIB, `cron.schedule('kmi-weekly-reminder')` memanggil `public.trigger_weekly_reminder()` → `net.http_post` ke Edge Function dengan secret `cron_secret` dari Vault. Edge Function mencocokkan token itu langsung ke Vault (`check_cron_secret`), jadi `CRON_SECRET` di env fungsi bersifat opsional.
 - Edge Function menghitung minggu rundown (hari ke-0/7/14/21 sejak awal bulan = pergantian minggu) dan mengisi `notification_queue` sesuai kebijakan:
 
 | Minggu | Penerima | Bagian |

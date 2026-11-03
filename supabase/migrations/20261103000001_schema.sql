@@ -37,6 +37,7 @@ $$;
 create or replace function public.touch_updated_at()
 returns trigger
 language plpgsql
+set search_path = ''
 as $$
 begin
   new.updated_at := now();
@@ -182,6 +183,12 @@ alter table public.departments        enable row level security;
 alter table public.monthly_reports    enable row level security;
 alter table public.priority_programs  enable row level security;
 alter table public.notification_queue enable row level security;
+
+-- Hak dasar tabel. Proyek Supabase baru tidak selalu memberi hak otomatis ke
+-- anon/authenticated, jadi dinyatakan eksplisit; RLS tetap membatasi barisnya.
+grant usage on schema public to anon, authenticated, service_role;
+grant select, insert, update, delete on all tables in schema public to authenticated, service_role;
+grant select on public.academic_periods, public.monthly_cycles to anon;
 
 create policy "admin kelola admin"      on public.app_admins         for all using (public.is_admin()) with check (public.is_admin());
 create policy "publik baca periode"     on public.academic_periods   for select using (true);
@@ -444,3 +451,5 @@ select
 from public.monthly_reports r
 join public.monthly_cycles c on c.id = r.cycle_id
 join public.departments d on d.id = r.department_id;
+
+grant select on public.v_report_recap to authenticated, service_role;

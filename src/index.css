@@ -57,12 +57,37 @@ h4 {
   }
 }
 
-/* Pita kepala: navy dengan kisi bintang delapan yang sangat samar */
+/* Pita kepala: foto Masjid PMDG Kampus 3 dengan lapisan navy agar teks terbaca */
 .kmi-header {
   background-color: #0f172a;
   background-image:
-    radial-gradient(120% 140% at 100% 0%, rgba(37, 99, 235, 0.38) 0%, rgba(15, 23, 42, 0) 55%),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='56' viewBox='0 0 56 56'%3E%3Cg fill='none' stroke='%23ffffff' stroke-opacity='0.06' stroke-width='1'%3E%3Crect x='16' y='16' width='24' height='24'/%3E%3Crect x='16' y='16' width='24' height='24' transform='rotate(45 28 28)'/%3E%3C/g%3E%3C/svg%3E");
+    linear-gradient(90deg, rgba(15, 23, 42, 0.94) 0%, rgba(15, 23, 42, 0.82) 38%, rgba(30, 58, 138, 0.55) 70%, rgba(15, 23, 42, 0.45) 100%),
+    url("/img/masjid-gontor3-sm.webp");
+  background-size: cover;
+  background-position: center 58%;
+}
+@media (min-width: 768px) {
+  .kmi-header {
+    background-image:
+      linear-gradient(90deg, rgba(15, 23, 42, 0.94) 0%, rgba(15, 23, 42, 0.8) 36%, rgba(30, 58, 138, 0.42) 68%, rgba(15, 23, 42, 0.3) 100%),
+      url("/img/masjid-gontor3.webp");
+  }
+}
+/* Halaman pembuka: foto lebih lega, gelap di bawah agar menyatu dengan bilah periode */
+.kmi-header--hero {
+  background-position: center 62%;
+}
+.kmi-header--hero::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 40%;
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0) 0%, rgba(15, 23, 42, 0.55) 100%);
+  pointer-events: none;
+}
+.kmi-header > * {
+  position: relative;
+  z-index: 1;
 }
 
 /* Bilah periode lekat dengan efek kaca halus */

@@ -1,6 +1,6 @@
 # =====================================================================
 #  CI/CD Portal Laporan Bulanan Sektor Guru KMI
-#  push ke main  → build & uji → migrasi Supabase + Edge Function → deploy Netlify
+#  push ke main  → build & uji → Edge Function + migrasi Supabase; Netlify membangun otomatis dari Git
 #  pull request  → build & uji saja
 #
 #  Secrets (Settings → Secrets and variables → Actions):
@@ -116,16 +116,6 @@ jobs:
         if: steps.check.outputs.ready == 'true'
         run: supabase link --project-ref "$SUPABASE_PROJECT_REF"
 
-      - name: Jalankan migrasi (skema, seed 48 bagian, pg_cron)
-        if: steps.check.outputs.ready == 'true'
-        # Utamakan string koneksi (paling stabil antar-versi CLI); bila gagal,
-        # coba proyek tertaut dengan flag lama (--linked) lalu flag baru (--remote).
-        run: |
-          if [ -n "$SUPABASE_DB_URL" ] && supabase db push --db-url "$SUPABASE_DB_URL" --yes; then exit 0; fi
-          echo "::notice::Push lewat SUPABASE_DB_URL tidak tersedia/gagal, mencoba proyek tertaut"
-          supabase db push --linked --password "$SUPABASE_DB_PASSWORD" --yes \
-            || supabase db push --remote --password "$SUPABASE_DB_PASSWORD" --yes
-
       - name: Deploy Edge Function weekly-reminder
         if: steps.check.outputs.ready == 'true'
         run: supabase functions deploy weekly-reminder --no-verify-jwt --project-ref "$SUPABASE_PROJECT_REF"
@@ -136,8 +126,25 @@ jobs:
           supabase secrets set --project-ref "$SUPABASE_PROJECT_REF" CRON_SECRET="$CRON_SECRET"
           if [ -n "$PORTAL_URL" ]; then supabase secrets set --project-ref "$SUPABASE_PROJECT_REF" PORTAL_URL="$PORTAL_URL"; fi
 
+      # Migrasi butuh kata sandi database. Bila sandi di Secrets salah, langkah ini
+      # diberi peringatan saja (migrasi juga bisa diterapkan lewat konektor Supabase).
+      - name: Jalankan migrasi (skema, seed 48 bagian, pg_cron)
+        id: migrate
+        if: steps.check.outputs.ready == 'true'
+        continue-on-error: true
+        run: |
+          if [ -n "$SUPABASE_DB_URL" ] && supabase db push --db-url "$SUPABASE_DB_URL" --yes; then exit 0; fi
+          echo "::notice::Push lewat SUPABASE_DB_URL tidak tersedia/gagal, mencoba proyek tertaut"
+          supabase db push --linked --password "$SUPABASE_DB_PASSWORD" --yes \
+            || supabase db push --remote --password "$SUPABASE_DB_PASSWORD" --yes
+
+      - name: Peringatan migrasi
+        if: steps.migrate.outcome == 'failure'
+        run: echo "::warning::Migrasi gagal (periksa SUPABASE_DB_PASSWORD / SUPABASE_DB_URL). Situs tetap dirilis."
+
       - name: Sinkron secret Vault untuk pg_cron
-        if: steps.check.outputs.ready == 'true' && env.SUPABASE_DB_URL != ''
+        if: steps.check.outputs.ready == 'true' && steps.migrate.outcome == 'success' && env.SUPABASE_DB_URL != ''
+        continue-on-error: true
         run: |
           sudo apt-get -qq update && sudo apt-get -qq install -y postgresql-client >/dev/null
           psql "$SUPABASE_DB_URL" \
@@ -145,10 +152,12 @@ jobs:
             -v cron_secret="$CRON_SECRET" \
             -f supabase/scripts/sync_vault.sql
 
+  # Netlify sudah terhubung ke repo ini (Git integration) dan otomatis membangun
+  # setiap push ke main. Job ini hanya untuk rilis manual (Actions → Run workflow).
   deploy:
-    name: Deploy Netlify
-    needs: [build, database]
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    name: Deploy Netlify (manual)
+    needs: [build]
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     env:
       NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}

@@ -133,12 +133,20 @@ const rank = (f) => {
   return i < 0 ? 99 : i;
 };
 const blueprint = allFiles
-  .filter((f) => !/\.(png|jpe?g|zip|docx|pdf)$/.test(f))
+  .filter((f) => !/\.(png|jpe?g|webp|zip|docx|pdf)$/.test(f))
   .sort((a, b) => rank(a) - rank(b) || a.localeCompare(b))
   .map((f) => ({ path: f, note: NOTES[f] || '', content: fs.readFileSync(path.join(root, f), 'utf8') }));
 
 // ---------------------------------------------------------------- rakit
-const css = await buildCss();
+let css = await buildCss();
+// Foto latar (public/img) disisipkan sebagai data URI karena artefak tidak bisa memuat berkas lokal.
+for (const img of ['masjid-gontor3.webp', 'masjid-gontor3-sm.webp']) {
+  const file = path.join(root, 'public/img', img);
+  if (fs.existsSync(file)) {
+    const uri = `data:image/webp;base64,${fs.readFileSync(file).toString('base64')}`;
+    css = css.split(`/img/${img}`).join(uri);
+  }
+}
 const js = await build({
   entryPoints: [path.join(root, 'src/main.jsx')],
   bundle: true,

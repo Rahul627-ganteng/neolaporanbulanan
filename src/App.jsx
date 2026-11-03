@@ -3,7 +3,7 @@ import {
   BarChart3, BellRing, CalendarRange, Code2, FileEdit, Inbox, LayoutDashboard, Lock, LogOut, RefreshCw, Users,
 } from 'lucide-react';
 import { useStore } from './lib/store.jsx';
-import { cycleLabel, deadlineText, daysBetween, RUNDOWN } from './lib/constants.js';
+import { cycleLabel, cycleMonthName, deadlineText, daysBetween, RUNDOWN } from './lib/constants.js';
 import { formatHijri, formatMasehi } from './lib/hijri.js';
 import { IS_ARTIFACT } from './lib/env.js';
 import { Badge, Button, cx, Empty, Select, Toast } from './components/ui.jsx';
@@ -53,28 +53,50 @@ function useHashTab(allowed) {
   return [allowed.includes(tab) ? tab : 'dasbor', go];
 }
 
-function Header() {
-  const { today } = useStore();
+function Header({ hero, go }) {
+  const { today, viewCycle, isAdmin } = useStore();
   return (
-    <header className="kmi-header relative overflow-hidden text-white">
-      <div className="kmi-gutter relative mx-auto flex max-w-[1240px] items-center justify-between gap-6 py-5 sm:py-6">
-        <div className="flex min-w-0 items-center gap-4">
-          <Emblem className="size-12 shrink-0 sm:size-14" />
-          <div className="min-w-0">
-            <p className="text-[10.5px] font-semibold uppercase tracking-[0.2em] text-blue-200/90">
-              Sektor Guru KMI · Kulliyatu-l-Mu'allimin Al-Islamiyyah
-            </p>
-            <h1 className="font-serif text-[24px] font-semibold leading-tight sm:text-[30px]">Portal Laporan Bulanan</h1>
-            <p className="mt-0.5 text-[13px] text-blue-100/80">
-              Pondok Modern Darussalam Gontor Kampus 3 · Darul Ma'rifat, Sumbercangkring, Gurah, Kediri
-            </p>
+    <header className={cx('kmi-header relative overflow-hidden text-white', hero && 'kmi-header--hero')}>
+      <div className={cx('kmi-gutter relative mx-auto flex max-w-[1240px] flex-col justify-between gap-6', hero ? 'py-8 sm:py-12' : 'py-5 sm:py-6')}>
+        <div className="flex items-start justify-between gap-6">
+          <div className="flex min-w-0 items-center gap-4">
+            <Emblem className="size-12 shrink-0 sm:size-14" />
+            <div className="min-w-0">
+              <p className="text-[10.5px] font-semibold uppercase tracking-[0.2em] text-blue-100/90">
+                Sektor Guru KMI · Kulliyatu-l-Mu'allimin Al-Islamiyyah
+              </p>
+              <h1 className="font-serif text-[24px] font-semibold leading-tight sm:text-[30px]">Portal Laporan Bulanan</h1>
+              <p className="mt-0.5 text-[13px] text-blue-50/85">
+                Pondok Modern Darussalam Gontor Kampus 3 · Darul Ma'rifat, Sumbercangkring, Gurah, Kediri
+              </p>
+            </div>
+          </div>
+          <div className="hidden shrink-0 text-right md:block">
+            <p className="font-arabic text-[28px] leading-none text-white" lang="ar" dir="rtl">دار المعرفة</p>
+            <p className="mt-2 text-[13.5px] font-semibold tabular-nums">{formatHijri(today)}</p>
+            <p className="text-[12px] text-blue-100/90 tabular-nums">{formatMasehi(today, true)} M</p>
           </div>
         </div>
-        <div className="hidden shrink-0 text-right md:block">
-          <p className="font-arabic text-[28px] leading-none text-white" lang="ar" dir="rtl">دار المعرفة</p>
-          <p className="mt-2 text-[13.5px] font-semibold tabular-nums">{formatHijri(today)}</p>
-          <p className="text-[12px] text-blue-200/90 tabular-nums">{formatMasehi(today, true)} M</p>
-        </div>
+        {hero && (
+          <div className="flex max-w-[620px] flex-col gap-4 pt-6 sm:pt-14">
+            <p className="font-serif text-[26px] font-semibold leading-snug text-balance sm:text-[34px]">
+              Ahlan wa sahlan. Laporan {viewCycle ? cycleMonthName(viewCycle) : 'bulan ini'} menunggu softfile dari setiap bagian.
+            </p>
+            <p className="text-[14px] leading-relaxed text-blue-50/90 md:hidden">
+              {formatHijri(today)} · {formatMasehi(today, true)} M
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="primary" size="lg" icon={FileEdit} onClick={() => go('input')}>
+                Input laporan
+              </Button>
+              {isAdmin && (
+                <Button size="lg" variant="ghost" icon={BellRing} className="bg-white/12 text-white ring-1 ring-white/30 hover:bg-white/20 hover:text-white" onClick={() => go('rundown')}>
+                  Rundown & pengingat
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </header>
   );
@@ -202,17 +224,20 @@ export default function App() {
 
   return (
     <div className="flex min-h-full flex-col">
-      <Header />
+      <Header hero={tab === 'dasbor'} go={go} />
       <PeriodBar tab={tab} go={go} tabs={tabs} onLogin={() => setLoginOpen(true)} onOpenCycle={() => setCycleOpen(true)} />
       <main className="kmi-gutter mx-auto w-full max-w-[1240px] flex-1 py-6">
-        {!viewCycle ? (
+        {!viewCycle && !['bagian', 'periode', 'blueprint'].includes(tab) ? (
           <Empty icon={CalendarRange} title="Belum ada periode bulan yang dibuka">
             {isAdmin ? (
               <>
-                Buka periode bulan Hijriah pertama agar 48 bagian bisa mulai melapor.
-                <div className="mt-4">
+                Lengkapi Data Bagian (nama, nomor WA, kode akses), lalu buka periode bulan Hijriah pertama agar 48 bagian bisa mulai melapor.
+                <div className="mt-4 flex flex-wrap justify-center gap-2">
                   <Button variant="primary" icon={RefreshCw} onClick={() => setCycleOpen(true)}>
                     Buka Periode Bulan
+                  </Button>
+                  <Button icon={Users} onClick={() => go('bagian')}>
+                    Isi Data Bagian
                   </Button>
                 </div>
               </>
