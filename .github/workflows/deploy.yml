@@ -40,7 +40,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Pasang dependensi
         run: |
@@ -114,11 +114,17 @@ jobs:
 
       - name: Tautkan proyek
         if: steps.check.outputs.ready == 'true'
-        run: supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
+        run: supabase link --project-ref "$SUPABASE_PROJECT_REF"
 
       - name: Jalankan migrasi (skema, seed 48 bagian, pg_cron)
         if: steps.check.outputs.ready == 'true'
-        run: supabase db push --password "$SUPABASE_DB_PASSWORD"
+        # Utamakan string koneksi (paling stabil antar-versi CLI); bila gagal,
+        # coba proyek tertaut dengan flag lama (--linked) lalu flag baru (--remote).
+        run: |
+          if [ -n "$SUPABASE_DB_URL" ] && supabase db push --db-url "$SUPABASE_DB_URL" --yes; then exit 0; fi
+          echo "::notice::Push lewat SUPABASE_DB_URL tidak tersedia/gagal, mencoba proyek tertaut"
+          supabase db push --linked --password "$SUPABASE_DB_PASSWORD" --yes \
+            || supabase db push --remote --password "$SUPABASE_DB_PASSWORD" --yes
 
       - name: Deploy Edge Function weekly-reminder
         if: steps.check.outputs.ready == 'true'
@@ -158,7 +164,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Rilis produksi
         run: |

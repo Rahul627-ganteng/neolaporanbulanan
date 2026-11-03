@@ -7,7 +7,7 @@
   publish = "dist"
 
 [build.environment]
-  NODE_VERSION = "20"
+  NODE_VERSION = "22"
   NPM_FLAGS = "--no-audit --no-fund"
   # VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY, VITE_PORTAL_URL diinjeksikan dari
   # Site configuration → Environment variables (atau `netlify env:set`, lihat README).
