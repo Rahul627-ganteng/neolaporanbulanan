@@ -118,13 +118,13 @@ jobs:
 
       - name: Deploy Edge Function weekly-reminder
         if: steps.check.outputs.ready == 'true'
-        run: supabase functions deploy weekly-reminder --no-verify-jwt --project-ref "$SUPABASE_PROJECT_REF"
+        run: supabase functions deploy weekly-reminder --no-verify-jwt --project-ref "$SUPABASE_PROJECT_REF" --yes
 
       - name: Setel secret Edge Function
         if: steps.check.outputs.ready == 'true'
         run: |
-          supabase secrets set --project-ref "$SUPABASE_PROJECT_REF" CRON_SECRET="$CRON_SECRET"
-          if [ -n "$PORTAL_URL" ]; then supabase secrets set --project-ref "$SUPABASE_PROJECT_REF" PORTAL_URL="$PORTAL_URL"; fi
+          supabase secrets set --yes --project-ref "$SUPABASE_PROJECT_REF" CRON_SECRET="$CRON_SECRET"
+          if [ -n "$PORTAL_URL" ]; then supabase secrets set --yes --project-ref "$SUPABASE_PROJECT_REF" PORTAL_URL="$PORTAL_URL"; fi
 
       # Migrasi butuh kata sandi database. Bila sandi di Secrets salah, langkah ini
       # diberi peringatan saja (migrasi juga bisa diterapkan lewat konektor Supabase).
