@@ -1,0 +1,171 @@
+# =====================================================================
+#  CI/CD Portal Laporan Bulanan Sektor Guru KMI
+#  push ke main  → build & uji → migrasi Supabase + Edge Function → deploy Netlify
+#  pull request  → build & uji saja
+#
+#  Secrets (Settings → Secrets and variables → Actions):
+#    SUPABASE_ACCESS_TOKEN   token akun Supabase (supabase.com/dashboard/account/tokens)
+#    SUPABASE_PROJECT_REF    ref proyek, mis. abcdefghijklmnopqrst
+#    SUPABASE_DB_PASSWORD    kata sandi database proyek
+#    SUPABASE_DB_URL         (opsional) string koneksi Session pooler untuk sinkron Vault
+#    CRON_SECRET             string acak panjang, dibagi pg_cron ↔ Edge Function
+#    VITE_SUPABASE_URL       https://<ref>.supabase.co
+#    VITE_SUPABASE_ANON_KEY  anon public key
+#    VITE_PORTAL_URL         (opsional) alamat situs untuk pesan WhatsApp
+#    NETLIFY_AUTH_TOKEN      personal access token Netlify
+#    NETLIFY_SITE_ID         API ID situs Netlify
+# =====================================================================
+name: CI/CD Laporan Bulanan KMI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build & uji
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Pasang dependensi
+        run: |
+          if [ -f package-lock.json ]; then npm ci --no-audit --no-fund; else npm install --no-audit --no-fund; fi
+
+      - name: Uji modul bersama rundown (Node)
+        run: |
+          node --input-type=module -e "
+          import * as R from './supabase/functions/_shared/rundown.js';
+          const c = { hijri_month: 5, hijri_year: 1448, masehi_label: '2026', start_date: '2026-10-12', end_date: '2026-11-10', deadline_date: '2026-11-15' };
+          if (R.computeWeek(c, '2026-11-03') !== 4) throw new Error('computeWeek salah');
+          if (R.normalizeWa('0812-3456-7890') !== '6281234567890') throw new Error('normalizeWa salah');
+          if (!R.deadlineText(c).startsWith('5 Jumadil Akhir 1448 H')) throw new Error('deadlineText salah');
+          console.log('rundown.js OK');"
+
+      - name: Mode build
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+        run: |
+          if [ -z "$VITE_SUPABASE_URL" ]; then
+            echo "::warning::VITE_SUPABASE_URL/VITE_SUPABASE_ANON_KEY belum diisi — situs dibangun dalam Mode Demo."
+          fi
+
+      - name: Build Vite
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_PORTAL_URL: ${{ secrets.VITE_PORTAL_URL }}
+        run: npm run build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist
+          retention-days: 7
+
+  database:
+    name: Migrasi Supabase & Edge Function
+    needs: build
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+      PORTAL_URL: ${{ secrets.VITE_PORTAL_URL }}
+    steps:
+      - name: Periksa secret Supabase
+        id: check
+        run: |
+          missing=""
+          for v in SUPABASE_ACCESS_TOKEN SUPABASE_PROJECT_REF SUPABASE_DB_PASSWORD CRON_SECRET; do
+            [ -z "${!v}" ] && missing="$missing $v"
+          done
+          if [ -n "$missing" ]; then
+            echo "::warning::Migrasi Supabase dilewati. Secret belum diisi:$missing"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.check.outputs.ready == 'true'
+
+      - uses: supabase/setup-cli@v1
+        if: steps.check.outputs.ready == 'true'
+        with:
+          version: latest
+
+      - name: Tautkan proyek
+        if: steps.check.outputs.ready == 'true'
+        run: supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
+
+      - name: Jalankan migrasi (skema, seed 48 bagian, pg_cron)
+        if: steps.check.outputs.ready == 'true'
+        run: supabase db push --password "$SUPABASE_DB_PASSWORD"
+
+      - name: Deploy Edge Function weekly-reminder
+        if: steps.check.outputs.ready == 'true'
+        run: supabase functions deploy weekly-reminder --no-verify-jwt --project-ref "$SUPABASE_PROJECT_REF"
+
+      - name: Setel secret Edge Function
+        if: steps.check.outputs.ready == 'true'
+        run: |
+          supabase secrets set --project-ref "$SUPABASE_PROJECT_REF" CRON_SECRET="$CRON_SECRET"
+          if [ -n "$PORTAL_URL" ]; then supabase secrets set --project-ref "$SUPABASE_PROJECT_REF" PORTAL_URL="$PORTAL_URL"; fi
+
+      - name: Sinkron secret Vault untuk pg_cron
+        if: steps.check.outputs.ready == 'true' && env.SUPABASE_DB_URL != ''
+        run: |
+          sudo apt-get -qq update && sudo apt-get -qq install -y postgresql-client >/dev/null
+          psql "$SUPABASE_DB_URL" \
+            -v project_url="https://${SUPABASE_PROJECT_REF}.supabase.co" \
+            -v cron_secret="$CRON_SECRET" \
+            -f supabase/scripts/sync_vault.sql
+
+  deploy:
+    name: Deploy Netlify
+    needs: [build, database]
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+      NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+      COMMIT_MSG: ${{ github.event.head_commit.message }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Rilis produksi
+        run: |
+          if [ -z "$NETLIFY_AUTH_TOKEN" ] || [ -z "$NETLIFY_SITE_ID" ]; then
+            echo "::notice::NETLIFY_AUTH_TOKEN/NETLIFY_SITE_ID kosong — lewati; Netlify Git-integration yang men-deploy."
+            exit 0
+          fi
+          npx --yes netlify-cli@17 deploy --prod --dir=dist \
+            --site "$NETLIFY_SITE_ID" --auth "$NETLIFY_AUTH_TOKEN" \
+            --message "main@${GITHUB_SHA::7} — ${COMMIT_MSG:-manual}"
