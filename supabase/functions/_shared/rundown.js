@@ -328,3 +328,28 @@ export function planReminderQueue({
   }
   return items;
 }
+
+/** Pesan WA berisi kode akses untuk Sekretaris Bagian. */
+export function buildAccessCodeMessage({ department, code, portalUrl = '', cycle = null }) {
+  const lines = [
+    "Assalamu'alaikum warahmatullahi wabarakatuh.",
+    `Yth. Sekretaris ${department.nama}.`,
+    '',
+    `*Kode akses Portal Laporan Bulanan ${INSTITUTION.sektor}*`,
+    `Kode: *${code}*`,
+    '',
+    'Cara mengirim laporan:',
+    `1. Buka ${portalUrl || 'portal laporan bulanan'} lalu pilih menu *Input Laporan*.`,
+    `2. Pilih bagian: ${department.nama}.`,
+    '3. Masukkan kode di atas, isi laporan yang sudah disetujui Pembimbing Bagian, lalu tekan Kirim.',
+  ];
+  if (cycle) {
+    lines.push('');
+    lines.push(`Laporan ${cycleLabel(cycle)} (hasil usaha ${cycleMonthName(cycle)} & program kerja ${nextMonthLabel(cycle)}) dikumpulkan selambatnya ${deadlineText(cycle)}.`);
+  }
+  lines.push('');
+  lines.push('Mohon kode ini disimpan dan hanya dipakai oleh bagian antum.');
+  lines.push('Jazakumullah khairan.');
+  lines.push(`— Admin Laporan Bulanan ${INSTITUTION.sektor}`);
+  return lines.join('\n');
+}

@@ -45,7 +45,7 @@ const GLOBALS = {
 };
 const COMPONENT_LIBS = new Set(['recharts', 'lucide-react']);
 const FONTS =
-  'https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=JetBrains+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Spectral:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap';
+  'https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Spectral:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap';
 
 // ---------------------------------------------------------------- berkas sumber
 function walk(dir, acc = []) {
@@ -158,6 +158,7 @@ const js = await build({
   jsxFactory: 'React.createElement',
   jsxFragment: 'React.Fragment',
   define: { 'import.meta.env': '{}' },
+  loader: { '.png': 'dataurl', '.webp': 'dataurl' },
   legalComments: 'none',
   plugins: [globalsPlugin],
   logLevel: 'warning',

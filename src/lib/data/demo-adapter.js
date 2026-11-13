@@ -4,7 +4,7 @@ import { createDemoState, demoUid } from './demo-seed.js';
 import { normalizeWa } from '../constants.js';
 import { todayIso } from '../hijri.js';
 
-const KEY = 'kmi-laporan-demo-v1';
+const KEY = 'kmi-laporan-demo-v2';
 const clone = (v) => JSON.parse(JSON.stringify(v));
 
 function load() {
@@ -12,7 +12,7 @@ function load() {
     const raw = localStorage.getItem(KEY);
     if (raw) {
       const s = JSON.parse(raw);
-      if (s && s.version === 1) return s;
+      if (s && s.version === 2) return s;
     }
   } catch {
     /* penyimpanan tidak tersedia */
@@ -185,6 +185,41 @@ export function createDemoAdapter() {
       db.queue = db.queue.filter((q) => q.cycle_id !== cycleId || q.status === 'sent');
       persist();
     },
+
+    async generateAccessCodes(onlyMissing = true) {
+      const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+      const rows = [];
+      for (const d of [...db.departments].sort((a, b) => a.no - b.no)) {
+        if (d.is_active === false || (onlyMissing && d.has_access_code)) continue;
+        const bytes = crypto.getRandomValues(new Uint8Array(6));
+        const kode = Array.from(bytes, (b) => alphabet[b % alphabet.length]).join('');
+        d.has_access_code = true;
+        rows.push({ department_id: d.id, no: d.no, nama: d.nama, kode });
+      }
+      persist();
+      return rows;
+    },
+
+    async listAdmins() {
+      db.admins ||= [{ email: 'admin.demo@kmi', catatan: 'Akun demo', punya_akun: true, terakhir_masuk: new Date().toISOString() }];
+      return clone(db.admins);
+    },
+    async addAdmin(email, catatan) {
+      db.admins ||= [];
+      const e = email.trim().toLowerCase();
+      if (!db.admins.some((a) => a.email === e)) db.admins.push({ email: e, catatan: catatan || '', punya_akun: true, terakhir_masuk: null });
+      persist();
+      return { email: e, created: true, password: 'DemoSandi2026' };
+    },
+    async resetAdminPassword(email) {
+      return { email, password: 'DemoSandiBaru1' };
+    },
+    async removeAdmin(email) {
+      if (email === 'admin.demo@kmi') throw new Error('Anda tidak dapat menghapus akun admin Anda sendiri');
+      db.admins = (db.admins || []).filter((a) => a.email !== email);
+      persist();
+    },
+    async changePassword() {},
 
     async resetDemo() {
       db = createDemoState(todayIso());

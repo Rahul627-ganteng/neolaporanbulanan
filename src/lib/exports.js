@@ -6,6 +6,20 @@ import { toBlob } from 'html-to-image';
 import { INSTITUTION, cycleLabel, deadlineText } from './constants.js';
 import { formatMasehi, formatHijri, todayIso } from './hijri.js';
 import { IS_ARTIFACT } from './env.js';
+import logoNavyUrl from '../assets/logo-darul-marifat-navy.png';
+
+/** Bita aset (URL biasa di situs, data: URI di prototipe artefak). */
+async function assetBytes(url) {
+  if (url.startsWith('data:')) {
+    const bin = atob(url.slice(url.indexOf(',') + 1));
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i += 1) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Gagal memuat ${url}`);
+  return new Uint8Array(await res.arrayBuffer());
+}
 
 // ---------------------------------------------------------------- CSV
 export function toCSV(header, rows) {
@@ -193,13 +207,23 @@ export async function buildBelumLaporPdf({ cycle, period, rows, total }) {
   let page;
   let y;
   let pageNo = 0;
+  let logo = null;
+  try {
+    logo = await pdf.embedPng(await assetBytes(logoNavyUrl));
+  } catch {
+    logo = null; // logo opsional; PDF tetap dibuat
+  }
 
   const header = () => {
     page = pdf.addPage([W, H]);
     pageNo += 1;
     y = H - M;
     if (pageNo === 1) {
-      page.drawText(winAnsi('DAFTAR BAGIAN YANG BELUM MENGUMPULKAN LAPORAN BULANAN'), { x: M, y, size: 13, font: bold, color: ink });
+      if (logo) page.drawImage(logo, { x: W - M - 58, y: H - M - 50, width: 58, height: 58 });
+      const title = winAnsi('DAFTAR BAGIAN YANG BELUM MENGUMPULKAN LAPORAN BULANAN');
+      const maxW = W - 2 * M - (logo ? 70 : 0);
+      const tSize = Math.min(13, maxW / bold.widthOfTextAtSize(title, 1));
+      page.drawText(title, { x: M, y, size: tSize, font: bold, color: ink });
       y -= 18;
       page.drawText(winAnsi(`${INSTITUTION.sektor} - ${INSTITUTION.nama}`), { x: M, y, size: 9.5, font, color: muted });
       y -= 13;

@@ -4,6 +4,7 @@ import { useStore } from '../lib/store.jsx';
 import { cycleLabel, deadlineText, formatGregorian, HIJRI_MONTHS, nextHijriMonth } from '../lib/constants.js';
 import { academicYearFor, hijriMonthRange, masehiLabelFor, nextAcademicLabels, toHijri } from '../lib/hijri.js';
 import { Badge, Button, Callout, Empty, Field, Input, Modal, Panel, Select } from './ui.jsx';
+import AdminAccounts from './AdminAccounts.jsx';
 
 export function OpenCycleModal({ open, onClose }) {
   const { cycles, periods, activeCycle, activeDepartments, today, actions, reportByDept } = useStore();
@@ -206,6 +207,10 @@ export default function Periods({ onOpenCycle }) {
           </div>
         )}
       </Panel>
+
+      <div className="lg:col-span-2 lg:max-w-[880px]">
+        <AdminAccounts />
+      </div>
 
       {editDates && (
         <Modal

@@ -9,6 +9,7 @@ import { nodeToPng, pngToPdf } from '../lib/exports.js';
 import { reportDocxBlob, reportDocxFilename } from '../lib/docx-report.js';
 import { copyText, saveFile, slug } from '../lib/files.js';
 import { Button, Modal } from './ui.jsx';
+import Logo from './Logo.jsx';
 
 const ORDER = ['unggulan', 'inovasi', 'tindak_lanjut', 'reguler'];
 
@@ -27,7 +28,7 @@ export const ReminderCard = React.forwardRef(function ReminderCard({ report, dep
             <p className="text-[10.5px] font-semibold uppercase tracking-[0.22em] text-[#BFD3FB]">Kartu Pengingat Target Program</p>
             <p className="mt-0.5 text-[12px] text-[#DCE6FB]">{INSTITUTION.sektor} · {INSTITUTION.singkat}</p>
           </div>
-          <p className="font-arabic text-[22px] leading-none text-white" lang="ar" dir="rtl">دار المعرفة</p>
+          <Logo className="size-14 shrink-0" />
         </div>
         <h3 className="mt-4 font-serif text-[28px] font-semibold leading-tight">{department.nama}</h3>
         <p className="mt-1 text-[14px] text-[#DCE6FB]">
@@ -85,7 +86,8 @@ export const ReminderCard = React.forwardRef(function ReminderCard({ report, dep
 });
 
 export function ReminderCardModal({ open, onClose, report, department, cycle }) {
-  const { period, actions } = useStore();
+  const { periods, period: viewPeriod, actions } = useStore();
+  const period = periods.find((p) => p.id === cycle?.period_id) || viewPeriod;
   const ref = useRef(null);
   const [busy, setBusy] = useState('');
   if (!open || !report || !department) return null;

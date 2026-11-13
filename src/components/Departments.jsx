@@ -1,8 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { Key, Pencil, Plus, Search, Users } from 'lucide-react';
+import { FileSpreadsheet, Key, Pencil, Plus, Search, Users } from 'lucide-react';
 import { useStore } from '../lib/store.jsx';
 import { formatWa, normalizeWa } from '../lib/constants.js';
 import { Badge, Button, Callout, Empty, Field, Input, Modal, Panel } from './ui.jsx';
+import { AccessCodesModal, ImportDepartmentsModal } from './DepartmentTools.jsx';
 
 function EditModal({ dept, onClose }) {
   const { actions, mode } = useStore();
@@ -76,17 +77,38 @@ export default function Departments() {
   const { departments, mode } = useStore();
   const [q, setQ] = useState('');
   const [edit, setEdit] = useState(null);
+  const [codesOpen, setCodesOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const rows = useMemo(() => {
     const n = q.trim().toLowerCase();
     return departments.filter((d) => !n || [d.nama, d.ketua_nama, d.sekretaris_nama, d.pembimbing_nama].join(' ').toLowerCase().includes(n));
   }, [departments, q]);
   const filled = departments.filter((d) => d.ketua_wa && d.sekretaris_wa).length;
+  const noCode = departments.filter((d) => d.is_active !== false && !d.has_access_code).length;
 
   return (
     <div className="flex flex-col gap-4">
       {mode === 'demo' && (
         <Callout tone="info" title="Nama di bawah adalah data contoh">
           Nomor WA sengaja dikosongkan. Isi dengan data asli di versi produksi; tombol pengingat akan memakai nomor tersebut.
+        </Callout>
+      )}
+      {(noCode > 0 || filled < departments.length) && (
+        <Callout tone="warn" title="Lengkapi agar laporan & pengingat berjalan">
+          <ul className="list-disc pl-4">
+            {noCode > 0 && (
+              <li>
+                {noCode} bagian belum punya kode akses, jadi sekretarisnya belum bisa mengirim laporan.{' '}
+                <button type="button" className="font-semibold underline underline-offset-2" onClick={() => setCodesOpen(true)}>Buat kode sekarang</button>
+              </li>
+            )}
+            {filled < departments.length && (
+              <li>
+                {departments.length - filled} bagian belum lengkap nomor WA Ketua/Sekretaris.{' '}
+                <button type="button" className="font-semibold underline underline-offset-2" onClick={() => setImportOpen(true)}>Impor dari spreadsheet</button>
+              </li>
+            )}
+          </ul>
         </Callout>
       )}
       <Panel
@@ -99,6 +121,8 @@ export default function Departments() {
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
               <Input id="dept-search" className="h-9 w-56 pl-9" placeholder="Cari bagian/nama" value={q} onChange={(e) => setQ(e.target.value)} />
             </div>
+            <Button size="sm" icon={FileSpreadsheet} onClick={() => setImportOpen(true)}>Impor dari spreadsheet</Button>
+            <Button size="sm" icon={Key} onClick={() => setCodesOpen(true)}>Kode akses massal</Button>
             <Button size="sm" icon={Plus} onClick={() => setEdit({ no: departments.length + 1, nama: '', is_active: true })}>Tambah bagian</Button>
           </>
         }
@@ -145,6 +169,8 @@ export default function Departments() {
         )}
       </Panel>
       {edit && <EditModal dept={edit} onClose={() => setEdit(null)} />}
+      <AccessCodesModal open={codesOpen} onClose={() => setCodesOpen(false)} />
+      <ImportDepartmentsModal open={importOpen} onClose={() => setImportOpen(false)} />
     </div>
   );
 }

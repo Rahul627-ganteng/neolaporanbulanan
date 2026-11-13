@@ -4,7 +4,6 @@
 @theme {
   --font-serif: "Spectral", Georgia, "Times New Roman", serif;
   --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --font-arabic: "Amiri", "Traditional Arabic", "Scheherazade New", serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
   --color-ink: #0F172A;      /* navy gelap: teks & pita kepala */

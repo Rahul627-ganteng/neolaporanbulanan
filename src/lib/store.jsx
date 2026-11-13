@@ -170,6 +170,25 @@ export function StoreProvider({ children }) {
       await adapter.saveDepartment(d);
       await refreshBase();
     }, `Data ${d.nama} tersimpan.`),
+    generateAccessCodes: (onlyMissing) => run(async () => {
+      const rows = await adapter.generateAccessCodes(onlyMissing);
+      await refreshBase();
+      return rows;
+    }, null),
+    importDepartments: (rows) => run(async () => {
+      let n = 0;
+      for (const d of rows) {
+        await adapter.saveDepartment(d);
+        n += 1;
+      }
+      await refreshBase();
+      return n;
+    }, `Data ${rows.length} bagian tersimpan.`),
+    listAdmins: () => adapter.listAdmins(),
+    addAdmin: (email, catatan) => run(() => adapter.addAdmin(email, catatan), null),
+    resetAdminPassword: (email) => run(() => adapter.resetAdminPassword(email), null),
+    removeAdmin: (email) => run(() => adapter.removeAdmin(email), `${email} tidak lagi menjadi admin.`),
+    changePassword: (pw) => run(() => adapter.changePassword(pw), 'Kata sandi diperbarui.'),
     setAccessCode: (deptId, code) => run(async () => {
       await adapter.setAccessCode(deptId, code);
       await refreshBase();

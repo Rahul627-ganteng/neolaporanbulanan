@@ -1,8 +1,11 @@
 // =====================================================================
 //  Edge Function: weekly-reminder
 //  Dipanggil pg_cron setiap pagi (lihat migrasi 3) atau oleh admin dari
-//  Panel Admin. Menghitung minggu rundown aktif, lalu pada hari pergantian
-//  minggu (tgl 1, 8, 15, 22 Hijriah) menyiapkan antrean pengingat WA.
+//  Panel Admin. Dua tugas:
+//   1. Membuka periode bulan baru otomatis sehari setelah tenggat tanggal 5
+//      (laporan bulan M dikumpulkan sampai 5 bulan M+1; lihat planCycleRollover).
+//   2. Pada hari pergantian minggu (tgl 1, 8, 15, 22 Hijriah) menyiapkan
+//      antrean pengingat WA sesuai agenda rundown.
 //  Pesan tidak dikirim di sini — admin mengirimnya manual (human-in-the-loop).
 //
 //  Deploy:  supabase functions deploy weekly-reminder --no-verify-jwt
@@ -17,6 +20,7 @@ import {
   planReminderQueue,
   prevHijriMonth,
 } from '../_shared/rundown.js';
+import { planCycleRollover } from '../_shared/hijri.js';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -72,11 +76,36 @@ Deno.serve(async (req) => {
 
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' }).format(new Date());
 
-  // --- Siklus aktif & minggu rundown ---
+  // --- 1. Buka periode bulan baru bila tenggat siklus aktif sudah lewat ---
+  const { data: active0, error: aErr } = await db
+    .from('monthly_cycles').select('*').eq('status', 'aktif').maybeSingle();
+  if (aErr) return json({ error: aErr.message }, 500);
+  let opened: string | null = null;
+  const { data: latest } = await db
+    .from('monthly_cycles').select('*')
+    .order('hijri_year', { ascending: false }).order('hijri_month', { ascending: false })
+    .limit(1).maybeSingle();
+  const plan = planCycleRollover({ active: active0, latest, today });
+  if (plan) {
+    const { error: oErr } = await db.rpc('open_cycle_auto', {
+      p_hijri_month: plan.hijri_month,
+      p_hijri_year: plan.hijri_year,
+      p_masehi_label: plan.masehi_label,
+      p_start_date: plan.start_date,
+      p_end_date: plan.end_date,
+      p_deadline: plan.deadline_date,
+      p_ta_masehi: plan.ta_masehi,
+      p_ta_hijri: plan.ta_hijri,
+    });
+    if (oErr) return json({ error: `Gagal membuka periode otomatis: ${oErr.message}` }, 500);
+    opened = `${plan.hijri_month}/${plan.hijri_year} (${plan.start_date} s.d. ${plan.end_date}, tenggat ${plan.deadline_date})`;
+  }
+
+  // --- 2. Siklus aktif & minggu rundown ---
   const { data: cycle, error: cErr } = await db
     .from('monthly_cycles').select('*').eq('status', 'aktif').maybeSingle();
   if (cErr) return json({ error: cErr.message }, 500);
-  if (!cycle) return json({ skipped: 'Belum ada periode bulan aktif' });
+  if (!cycle) return json({ skipped: 'Belum ada periode bulan aktif', opened });
 
   const week = body.week && body.week >= 1 && body.week <= 4 ? body.week : computeWeek(cycle, today);
   const dayIndex = daysBetween(cycle.start_date, today);
@@ -89,7 +118,7 @@ Deno.serve(async (req) => {
     .eq('week', week);
 
   if (!body.force && !isWeekChange && (existing ?? 0) > 0) {
-    return json({ skipped: 'Antrean minggu ini sudah tersedia', week, existing });
+    return json({ skipped: 'Antrean minggu ini sudah tersedia', week, existing, opened });
   }
 
   // --- Data pendukung ---
@@ -126,7 +155,7 @@ Deno.serve(async (req) => {
     portalUrl: PORTAL_URL,
   }).map((it) => ({ ...it, cycle_id: cycle.id, source }));
 
-  if (!items.length) return json({ week, queued: 0, note: 'Tidak ada bagian yang perlu diingatkan' });
+  if (!items.length) return json({ week, queued: 0, opened, note: 'Tidak ada bagian yang perlu diingatkan' });
 
   // Antrean yang sudah ada tidak ditimpa (status terkirim tetap terjaga)
   const { error: qErr, count } = await db
@@ -134,5 +163,5 @@ Deno.serve(async (req) => {
     .upsert(items, { onConflict: 'cycle_id,department_id,week,target_role', ignoreDuplicates: true, count: 'exact' });
   if (qErr) return json({ error: qErr.message }, 500);
 
-  return json({ week, today, source, queued: count ?? items.length, considered: items.length });
+  return json({ week, today, source, opened, queued: count ?? items.length, considered: items.length });
 });

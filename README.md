@@ -3,6 +3,8 @@
 
 Sistem informasi pelaporan bulanan untuk 48 bagian Sektor Guru KMI: formulir softfile resmi, pelacak Rundown 4 minggu, pengingat WhatsApp dengan konfirmasi admin, kartu pengingat target program, dokumen Word resmi, daftar belum lapor, dan panel admin bergrafik. Satu kode sumber berjalan dalam dua mode:
 
+**Alur laporan.** Laporan bulan M berisi *hasil usaha selama bulan M* dan *program kerja bulan M+1*. Laporan dikerjakan di akhir bulan M (Minggu 3–4) dan dikumpulkan paling lambat **tanggal 5 bulan M+1**. Siklus M tetap aktif sampai tenggat itu; sehari setelahnya Edge Function membuka siklus M+1 otomatis. Laporan M yang terlambat tetap diterima dan ditandai *terlambat*.
+
 | Mode | Kapan aktif | Penyimpanan |
 |---|---|---|
 | **Demo** | `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` kosong, atau prototipe artefak | Peramban (localStorage), berisi data contoh |
@@ -23,16 +25,21 @@ supabase/
     20261103000003_cron_reminders.sql     pg_cron harian 06.05 WIB → Edge Function
     20261104000001_cron_secret_admin_allowlist.sql  verifikasi secret lewat Vault + daftar email admin
     20261104000002_hardening.sql          indeks FK & RLS per aksi (saran Supabase Advisor)
+    20261104010601_departments_admin_only_read.sql  nama & WA pejabat bagian hanya untuk admin
+    20261114000001_otomasi_periode_kode_admin.sql   buka periode otomatis, kode akses massal, kelola admin
   functions/
     _shared/rundown.js              aturan rundown & template WA (dipakai frontend + Edge Function)
-    weekly-reminder/index.ts        menyiapkan antrean pengingat setiap pergantian minggu
-  scripts/sync_vault.sql            menyimpan secret Vault yang dibaca pg_cron
+    _shared/hijri.js                kalender Hijriah (Umm al-Qura) & rencana pembukaan periode
+    weekly-reminder/index.ts        buka periode baru otomatis + antrean pengingat mingguan
+    admin-users/index.ts            tambah admin & kata sandi sementara dari aplikasi
 src/                                aplikasi React (Vite + Tailwind v4 + Recharts + Lucide + docx)
+src/assets/                         logo Darul Ma'rifat (putih & navy, PNG transparan)
+scripts/apply-migrations.mjs        migrasi lewat Management API (tanpa kata sandi database)
 scripts/build-artifact.mjs          membangun prototipe single-file dari kode yang sama
 ```
 
 ### Tabel utama
-- `academic_periods` — tahun ajaran lintas periode (tambah 2027-2028 / 1448-1449 dst. dari menu **Periode**).
+- `academic_periods` — tahun ajaran lintas periode (dibuat otomatis tiap Syawal, atau manual dari menu **Periode & Admin**).
 - `monthly_cycles` — satu bulan Hijriah = satu siklus; `deadline_date` = tanggal 5 bulan berikutnya; `active_week` opsional (manual).
 - `departments` — 48 bagian + nama & WA Ketua/Sekretaris, nama Pembimbing, hash kode akses.
 - `monthly_reports` — Hasil Usaha, Kendala (berkategori), Solusi, status, dan cap waktu tahapan rundown (rapat bagian, draf ke Guru Senior, persetujuan Pembimbing, softfile, hardfile Staf Sekretaris Wakil Pengasuh).
@@ -78,37 +85,34 @@ Push repositori, lalu isi **Settings → Secrets and variables → Actions**:
 |---|---|
 | `SUPABASE_ACCESS_TOKEN` | token dari supabase.com/dashboard/account/tokens |
 | `SUPABASE_PROJECT_REF` | ref proyek |
-| `SUPABASE_DB_PASSWORD` | kata sandi database |
-| `SUPABASE_DB_URL` | string koneksi Session pooler (untuk sinkron Vault) |
-| `CRON_SECRET` | string acak ≥ 32 karakter (`openssl rand -hex 32`) |
+| `CRON_SECRET` | opsional; pg_cron memakai secret Vault `cron_secret` yang dibuat otomatis |
 | `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` | URL & anon key |
 | `VITE_PORTAL_URL` | alamat situs (opsional, dicantumkan di pesan WA) |
 | `NETLIFY_AUTH_TOKEN` / `NETLIFY_SITE_ID` | dari langkah 2 |
 
-Setiap push ke `main` menjalankan: build & uji → deploy Edge Function `weekly-reminder` + secret → `supabase db push` (bila sandi database benar; bila salah hanya peringatan). Netlify yang terhubung ke repo membangun & merilis situs sendiri dari `netlify.toml`; job `Deploy Netlify (manual)` di Actions hanya untuk rilis manual. Pull request hanya di-build.
+Setiap push ke `main` menjalankan: build & uji → `scripts/apply-migrations.mjs` (migrasi + secret Vault lewat Management API, cukup access token) → deploy Edge Function `weekly-reminder` & `admin-users`. Netlify yang terhubung ke repo membangun & merilis situs sendiri dari `netlify.toml`; job `Deploy Netlify (manual)` di Actions hanya untuk rilis manual. Pull request hanya di-build. Kata sandi database tidak diperlukan lagi.
 
-### 4. Daftarkan admin & aktifkan pg_cron (sekali, di SQL Editor)
+### 4. Admin pertama (sekali saja, di SQL Editor)
+Buat akun di **Authentication → Users → Add user** (centang *Auto Confirm User*), lalu:
 ```sql
--- Email yang terdaftar otomatis menjadi admin, untuk akun lama maupun yang dibuat nanti
 insert into public.app_admin_emails (email, catatan) values
   ('admin@contoh.sch.id', 'Admin Sektor Guru KMI')
 on conflict (email) do nothing;
-
--- Buat secret Vault project_url + cron_secret acak untuk pengingat otomatis
-select public.ensure_cron_setup('https://<ref>.supabase.co');
 ```
-Akun admin dibuat di **Authentication → Users → Add user** (centang *Auto Confirm User*).
+Admin berikutnya ditambahkan dari aplikasi (**Periode & Admin → Akun admin**): akun dibuat otomatis dengan kata sandi sementara.
 
 ### 5. Mulai pakai
-1. Masuk sebagai admin → **Periode → Buka Periode Bulan Baru** (tanggal awal bulan dihitung dari Umm al-Qura; sesuaikan dengan penetapan pondok bila berbeda).
-2. **Data Bagian**: isi nama & WA Ketua/Sekretaris, nama Pembimbing, dan **kode akses** tiap bagian. Bagikan kode ke Sekretaris Bagian.
+1. **Data Bagian → Impor dari spreadsheet**: unduh templat 48 bagian, isi nama & WA Ketua/Sekretaris dan Pembimbing, tempel/unggah kembali.
+2. **Data Bagian → Kode akses massal**: buat kode 6 karakter untuk semua bagian, unduh Excel-nya, kirim ke tiap Sekretaris lewat tombol WA.
 3. Sekretaris membuka portal → **Input Laporan** → pilih bagian → isi kode akses → kirim.
+4. Periode bulan berikutnya dibuka otomatis sehari setelah tenggat tanggal 5 (tanggal Umm al-Qura; admin dapat menyesuaikan di **Periode & Admin** bila penetapan pondok berbeda).
 
 ---
 
 ## Otomatisasi pengingat (pg_cron + Edge Function)
 - Setiap hari 06.05 WIB, `cron.schedule('kmi-weekly-reminder')` memanggil `public.trigger_weekly_reminder()` → `net.http_post` ke Edge Function dengan secret `cron_secret` dari Vault. Edge Function mencocokkan token itu langsung ke Vault (`check_cron_secret`), jadi `CRON_SECRET` di env fungsi bersifat opsional.
-- Edge Function menghitung minggu rundown (hari ke-0/7/14/21 sejak awal bulan = pergantian minggu) dan mengisi `notification_queue` sesuai kebijakan:
+- Edge Function pertama-tama membuka periode bulan baru bila tenggat siklus aktif sudah lewat (`open_cycle_auto`; tahun ajaran baru dibuat otomatis di bulan Syawal; pengingat lama yang belum terkirim ditandai dilewati).
+- Lalu menghitung minggu rundown (hari ke-0/7/14/21 sejak awal bulan = pergantian minggu) dan mengisi `notification_queue` sesuai kebijakan:
 
 | Minggu | Penerima | Bagian |
 |---|---|---|
@@ -123,7 +127,8 @@ Akun admin dibuat di **Authentication → Users → Add user** (centang *Auto Co
 
 ## Keamanan
 - RLS aktif di semua tabel. Publik hanya membaca nama bagian, tahun ajaran, dan siklus; isi laporan & nomor WA hanya untuk admin.
-- Sekretaris mengirim laporan lewat RPC `submit_report` dengan kode akses bagian (bcrypt). Laporan bulan lalu tetap diterima sampai tanggal 5 bulan berikutnya.
+- Sekretaris mengirim laporan lewat RPC `submit_report` dengan kode akses bagian (bcrypt, tidak peka huruf besar/kecil). Sekretaris dapat mengirim untuk siklus aktif dan satu siklus sebelumnya; yang lebih lama hanya lewat admin.
+- Admin tidak dapat mencabut hak adminnya sendiri, dan daftar admin tidak boleh kosong.
 - `service_role` key hanya dipakai di Edge Function (otomatis dari Supabase), tidak pernah di frontend atau Netlify.
 
 ## Prototipe single-file

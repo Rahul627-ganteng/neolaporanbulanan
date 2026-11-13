@@ -3,8 +3,8 @@ import {
   BarChart3, BellRing, CalendarRange, Code2, FileEdit, Inbox, LayoutDashboard, Lock, LogOut, RefreshCw, Users,
 } from 'lucide-react';
 import { useStore } from './lib/store.jsx';
-import { cycleLabel, cycleMonthName, deadlineText, daysBetween, RUNDOWN } from './lib/constants.js';
-import { formatHijri, formatMasehi } from './lib/hijri.js';
+import { cycleLabel, cycleMonthName, deadlineText, daysBetween, nextMonthLabel, RUNDOWN } from './lib/constants.js';
+import { formatHijri, formatMasehi, inCollectionWindow } from './lib/hijri.js';
 import { IS_ARTIFACT } from './lib/env.js';
 import { Badge, Button, cx, Empty, Select, Toast } from './components/ui.jsx';
 import Dashboard from './components/Dashboard.jsx';
@@ -16,7 +16,7 @@ import Departments from './components/Departments.jsx';
 import Periods, { OpenCycleModal } from './components/Periods.jsx';
 import Blueprint from './components/Blueprint.jsx';
 import LoginModal from './components/LoginModal.jsx';
-import Emblem from './components/Emblem.jsx';
+import Logo from './components/Logo.jsx';
 
 const TABS = [
   { id: 'dasbor', label: 'Dasbor', icon: LayoutDashboard, admin: false },
@@ -25,7 +25,7 @@ const TABS = [
   { id: 'laporan', label: 'Laporan Masuk', icon: Inbox, admin: true },
   { id: 'admin', label: 'Panel Admin', icon: BarChart3, admin: true },
   { id: 'bagian', label: 'Data Bagian', icon: Users, admin: true },
-  { id: 'periode', label: 'Periode', icon: CalendarRange, admin: true },
+  { id: 'periode', label: 'Periode & Admin', icon: CalendarRange, admin: true },
   { id: 'blueprint', label: 'Blueprint Produksi', icon: Code2, admin: true, artifactOnly: true },
 ];
 
@@ -60,7 +60,7 @@ function Header({ hero, go }) {
       <div className={cx('kmi-gutter relative mx-auto flex max-w-[1240px] flex-col justify-between gap-6', hero ? 'py-8 sm:py-12' : 'py-5 sm:py-6')}>
         <div className="flex items-start justify-between gap-6">
           <div className="flex min-w-0 items-center gap-4">
-            <Emblem className="size-12 shrink-0 sm:size-14" />
+            <Logo className="size-14 shrink-0 drop-shadow-[0_2px_8px_rgba(15,23,42,0.45)] sm:size-[72px]" />
             <div className="min-w-0">
               <p className="text-[10.5px] font-semibold uppercase tracking-[0.2em] text-blue-100/90">
                 Sektor Guru KMI · Kulliyatu-l-Mu'allimin Al-Islamiyyah
@@ -72,8 +72,7 @@ function Header({ hero, go }) {
             </div>
           </div>
           <div className="hidden shrink-0 text-right md:block">
-            <p className="font-arabic text-[28px] leading-none text-white" lang="ar" dir="rtl">دار المعرفة</p>
-            <p className="mt-2 text-[13.5px] font-semibold tabular-nums">{formatHijri(today)}</p>
+            <p className="text-[13.5px] font-semibold tabular-nums">{formatHijri(today)}</p>
             <p className="text-[12px] text-blue-100/90 tabular-nums">{formatMasehi(today, true)} M</p>
           </div>
         </div>
@@ -82,6 +81,12 @@ function Header({ hero, go }) {
             <p className="font-serif text-[26px] font-semibold leading-snug text-balance sm:text-[34px]">
               Ahlan wa sahlan. Laporan {viewCycle ? cycleMonthName(viewCycle) : 'bulan ini'} menunggu softfile dari setiap bagian.
             </p>
+            {viewCycle && (
+              <p className="max-w-[56ch] text-[14.5px] leading-relaxed text-blue-50/90">
+                Isinya hasil usaha selama {cycleMonthName(viewCycle)} dan program kerja {nextMonthLabel(viewCycle)}. Tenggat{' '}
+                {deadlineText(viewCycle)}.
+              </p>
+            )}
             <p className="text-[14px] leading-relaxed text-blue-50/90 md:hidden">
               {formatHijri(today)} · {formatMasehi(today, true)} M
             </p>
@@ -113,7 +118,9 @@ function WeekPips({ week }) {
 }
 
 function PeriodBar({ tab, go, tabs, onLogin, onOpenCycle }) {
-  const { cycles, viewCycle, period, week, today, actions, isAdmin, mode, session } = useStore();
+  const { cycles, viewCycle, period, week, today, actions, isAdmin, mode, session, queue } = useStore();
+  const pending = queue.filter((q) => q.status === 'pending').length;
+  const collecting = inCollectionWindow(viewCycle, today) && !viewCycle?.active_week;
   const left = viewCycle ? daysBetween(today, viewCycle.deadline_date) : 0;
   return (
     <div className="kmi-sticky sticky z-40 border-b border-line">
@@ -143,8 +150,9 @@ function PeriodBar({ tab, go, tabs, onLogin, onOpenCycle }) {
           )}
           {viewCycle && viewCycle.status === 'aktif' && (
             <span className="inline-flex items-center gap-2 text-[12.5px] font-semibold text-ink">
-              <WeekPips week={week} /> {RUNDOWN[week - 1].title}
-              {viewCycle.active_week ? <span className="font-normal text-muted">(manual)</span> : null}
+              <WeekPips week={collecting ? 5 : week} />
+              {collecting ? `Masa pengumpulan · Minggu Pertama ${nextMonthLabel(viewCycle).replace(/ \d+ H$/, '')}` : RUNDOWN[week - 1].title}
+              {viewCycle.active_week && !collecting ? <span className="font-normal text-muted">(manual)</span> : null}
             </span>
           )}
           {viewCycle && (
@@ -189,6 +197,11 @@ function PeriodBar({ tab, go, tabs, onLogin, onOpenCycle }) {
             >
               <t.icon className="size-4" aria-hidden />
               {t.label}
+              {t.id === 'rundown' && pending > 0 && (
+                <span className="rounded-full bg-brand px-1.5 py-px text-[11px] font-bold text-white tabular-nums" aria-label={`${pending} pengingat menunggu`}>
+                  {pending}
+                </span>
+              )}
             </button>
           ))}
         </div>

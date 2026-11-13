@@ -13,6 +13,17 @@ function must({ data, error }) {
   return data;
 }
 
+// Pesan error Edge Function ada di body respons, bukan di error.message.
+async function functionError(error) {
+  try {
+    const body = await error.context?.json?.();
+    if (body?.error) return body.error;
+  } catch {
+    /* abaikan */
+  }
+  return error.message || 'Edge Function gagal';
+}
+
 const mapReport = (r) => ({
   ...r,
   programs: [...(r.priority_programs || [])].sort((a, b) => a.urutan - b.urutan),
@@ -172,6 +183,33 @@ export function createSupabaseAdapter() {
     async clearQueue(cycleId) {
       must(await sb.from('notification_queue').delete().eq('cycle_id', cycleId).neq('status', 'sent'));
     },
+    // ----- kode akses massal -----
+    async generateAccessCodes(onlyMissing = true) {
+      return must(await sb.rpc('generate_access_codes', { p_only_missing: onlyMissing }));
+    },
+
+    // ----- kelola admin -----
+    async listAdmins() {
+      return must(await sb.rpc('list_admins'));
+    },
+    async addAdmin(email, catatan) {
+      const { data, error } = await sb.functions.invoke('admin-users', { body: { action: 'create', email, catatan } });
+      if (error) throw new Error(await functionError(error));
+      return data;
+    },
+    async resetAdminPassword(email) {
+      const { data, error } = await sb.functions.invoke('admin-users', { body: { action: 'reset', email } });
+      if (error) throw new Error(await functionError(error));
+      return data;
+    },
+    async removeAdmin(email) {
+      must(await sb.from('app_admin_emails').delete().eq('email', email));
+    },
+    async changePassword(password) {
+      const { error } = await sb.auth.updateUser({ password });
+      if (error) throw new Error(error.message);
+    },
+
     /** Picu Edge Function yang sama dengan pg_cron (untuk uji atau susulan). */
     async runCron(week) {
       const { data, error } = await sb.functions.invoke('weekly-reminder', { body: { force: true, week } });

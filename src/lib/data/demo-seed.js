@@ -225,7 +225,11 @@ function makeCycle(month, year, periodId, status) {
 export function createDemoState(today) {
   idSeq = 0;
   const rand = rng(1448);
-  const h = toHijri(today);
+  // Siklus aktif = bulan yang laporannya sedang dikumpulkan: bulan M tetap
+  // aktif sampai tenggat tanggal 5 bulan M+1 (sama dengan Edge Function).
+  const now = toHijri(today);
+  const before = prevHijriMonth(now.month, now.year);
+  const h = today <= hijriMonthRange(before.month, before.year).deadline ? before : { month: now.month, year: now.year };
   const prev = prevHijriMonth(h.month, h.year);
 
   const ta = academicYearFor(h.month, h.year);
@@ -269,11 +273,13 @@ export function createDemoState(today) {
   }
   // Bulan berjalan: sebagian sudah menginput softfile.
   const dayIndex = Math.max(0, Math.round((Date.parse(today) - Date.parse(cycle.start_date)) / 86400000));
+  const lastDay = Math.max(0, Math.min(dayIndex, 33));
+  const firstDay = Math.min(21, lastDay);
+  const pSubmit = dayIndex >= 21 ? 0.6 : 0.12;
   for (const d of departments) {
     const r = rand();
-    const submitted = r < 0.6;
-    const lastDay = Math.max(21, Math.min(dayIndex, 29));
-    const iso = addDays(cycle.start_date, Math.min(21 + Math.floor(rand() * (lastDay - 20)), lastDay));
+    const submitted = r < pSubmit;
+    const iso = addDays(cycle.start_date, firstDay + Math.floor(rand() * (lastDay - firstDay + 1)));
     const stages = submitted
       ? { rapat: true, draft: true, approved: true, wapeng: rand() < 0.45 }
       : { rapat: r < 0.85, draft: r < 0.75, approved: r < 0.66, wapeng: false };
@@ -281,7 +287,7 @@ export function createDemoState(today) {
   }
 
   return {
-    version: 1,
+    version: 2,
     seededFor: today,
     periods,
     cycles: [cycle, prevCycle],

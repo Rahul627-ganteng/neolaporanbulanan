@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Key, Plus, Send, Sparkles, Trash2 } from 'lucide-react';
 import { useStore } from '../lib/store.jsx';
-import { cycleLabel, KENDALA_CATEGORIES, nextMonthLabel, PROGRAM_CATEGORIES } from '../lib/constants.js';
+import { cycleLabel, cycleMonthName, deadlineText, KENDALA_CATEGORIES, nextMonthLabel, PROGRAM_CATEGORIES } from '../lib/constants.js';
 import { formatTimestamp } from '../lib/hijri.js';
 import { routineHits, toPayload, validateReport } from '../lib/validation.js';
 import { Button, Callout, cx, Field, Input, Panel, Select, Textarea } from './ui.jsx';
@@ -81,10 +81,13 @@ function StringList({ idPrefix, items, onChange, placeholder, renderExtra, addLa
 export default function ReportForm({ go }) {
   const { cycles, activeCycle, prevCycle, viewCycle, activeDepartments, departments, reportsByCycle, isAdmin, mode, today, week, actions, loadReports } = useStore();
 
-  const openCycles = useMemo(
-    () => cycles.filter((c) => isAdmin || c.status === 'aktif' || today <= c.deadline_date),
-    [cycles, isAdmin, today]
-  );
+  // Sama dengan aturan submit_report: sekretaris boleh mengirim untuk siklus aktif
+  // dan satu siklus sebelumnya (lewat tenggat tercatat terlambat). Admin: semua.
+  const openCycles = useMemo(() => {
+    if (isAdmin) return cycles;
+    const archived = cycles.filter((c) => c.status === 'arsip').sort((a, b) => b.start_date.localeCompare(a.start_date));
+    return cycles.filter((c) => c.status === 'aktif' || c.id === archived[0]?.id);
+  }, [cycles, isAdmin]);
   const defaultCycle = useMemo(() => {
     const prevOpen = activeCycle && week === 1 && prevCycle && today <= prevCycle.deadline_date ? prevCycle : null;
     return (prevOpen || activeCycle || viewCycle)?.id || '';
@@ -152,7 +155,7 @@ export default function ReportForm({ go }) {
     setBusy(true);
     try {
       const payload = toPayload(form);
-      const saved = await actions.submitReport({ cycleId: cycle.id, departmentId: form.department_id, accessCode: form.access_code, payload });
+      const saved = await actions.submitReport({ cycleId: cycle.id, departmentId: form.department_id, accessCode: form.access_code.trim().toUpperCase(), payload });
       const report = { ...saved, ...payload, submitted_at: existing?.submitted_at || saved.submitted_at || new Date().toISOString() };
       setDone({ report, department: dept, cycle, revised: Boolean(existing?.submitted_at), showCard: true });
       setForm(emptyForm(form.cycle_id));
@@ -183,13 +186,18 @@ export default function ReportForm({ go }) {
 
         <Panel eyebrow="Softfile laporan yang telah disetujui Pembimbing Bagian" title="Formulir Laporan Bulanan">
           <div className="flex flex-col gap-7">
+            <Callout tone={today > cycle.deadline_date ? 'warn' : 'info'} title={`Laporan bulan ${cycleLabel(cycle)}`}>
+              Berisi hasil usaha selama {cycleMonthName(cycle)} dan program kerja {nextMonthLabel(cycle)}. Dikumpulkan di akhir{' '}
+              {cycleMonthName(cycle)} sampai {deadlineText(cycle)}
+              {today > cycle.deadline_date ? '; laporan yang masuk sekarang tercatat terlambat.' : '.'}
+            </Callout>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field label="Laporan bulan">
                 <Select id="f-cycle" value={form.cycle_id} onChange={(e) => patch({ cycle_id: e.target.value, department_id: '' })}>
                   {openCycles.map((c) => (
                     <option key={c.id} value={c.id}>
                       {cycleLabel(c)}
-                      {c.status === 'arsip' ? ' · bulan lalu' : ''}
+                      {c.status === 'arsip' ? (today > c.deadline_date ? ' · terlambat' : ' · bulan lalu') : ''}
                     </option>
                   ))}
                 </Select>
@@ -219,7 +227,18 @@ export default function ReportForm({ go }) {
               </Field>
               {requireCode ? (
                 <Field label="Kode akses bagian" hint="Diberikan admin kepada Sekretaris Bagian.">
-                  <Input id="f-code" type="password" autoComplete="off" value={form.access_code} onChange={(e) => patch({ access_code: e.target.value })} />
+                  <Input
+                    id="f-code"
+                    type="text"
+                    autoComplete="off"
+                    autoCapitalize="characters"
+                    spellCheck={false}
+                    maxLength={32}
+                    className="font-mono uppercase tracking-[0.2em]"
+                    placeholder="6 karakter"
+                    value={form.access_code}
+                    onChange={(e) => patch({ access_code: e.target.value.toUpperCase() })}
+                  />
                 </Field>
               ) : (
                 <div className="flex items-end">
@@ -250,8 +269,8 @@ export default function ReportForm({ go }) {
             )}
 
             <section className="flex flex-col gap-3">
-              <SectionTitle n="I" title="Hasil Usaha">
-                Ditulis dari program kerja yang telah terlaksana pada bulan sebelumnya. Tuliskan program baru dan hasilnya yang terukur.
+              <SectionTitle n="I" title={`Hasil Usaha · ${cycleMonthName(cycle)} ${cycle.hijri_year} H`}>
+                Program kerja yang sudah terlaksana selama bulan {cycleMonthName(cycle)}. Tuliskan program baru dan hasilnya yang terukur.
               </SectionTitle>
               <div className="sm:pl-7">
                 <Callout tone="warn">
@@ -276,7 +295,7 @@ export default function ReportForm({ go }) {
             </section>
 
             <section className="flex flex-col gap-3">
-              <SectionTitle n="II" title="Kendala-kendala">Hal-hal yang menghambat terlaksananya program kerja secara sempurna.</SectionTitle>
+              <SectionTitle n="II" title="Kendala-kendala">Hal-hal yang menghambat terlaksananya program kerja {cycleMonthName(cycle)} secara sempurna.</SectionTitle>
               <div className="flex flex-col gap-2.5 sm:pl-7">
                 {form.kendala.map((k, i) => (
                   <div key={i} className="flex flex-col gap-2 sm:flex-row sm:items-start">
