@@ -92,6 +92,8 @@ Push repositori, lalu isi **Settings → Secrets and variables → Actions**:
 
 Setiap push ke `main` menjalankan: build & uji → `scripts/apply-migrations.mjs` (migrasi + secret Vault lewat Management API, cukup access token) → deploy Edge Function `weekly-reminder` & `admin-users`. Netlify yang terhubung ke repo membangun & merilis situs sendiri dari `netlify.toml`; job `Deploy Netlify (manual)` di Actions hanya untuk rilis manual. Pull request hanya di-build. Kata sandi database tidak diperlukan lagi.
 
+Proyek ini juga terhubung ke **integrasi GitHub Supabase** (cek "Supabase Preview"), yang menerapkan `supabase/migrations` dan Edge Function dari `main` dengan sendirinya. Karena itu, bila `SUPABASE_ACCESS_TOKEN` ditolak (HTTP 401), job migrasi di Actions hanya memberi peringatan, tidak gagal. Untuk mengaktifkan jalur CI juga, buat Personal Access Token baru (diawali `sbp_`) lalu simpan ulang sebagai secret tersebut.
+
 ### 4. Admin pertama (sekali saja, di SQL Editor)
 Buat akun di **Authentication → Users → Add user** (centang *Auto Confirm User*), lalu:
 ```sql

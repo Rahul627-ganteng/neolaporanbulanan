@@ -41,12 +41,34 @@ const literal = (s) => {
   return `$${tag}$${s}$${tag}$`;
 };
 
-await query(`
-  create schema if not exists supabase_migrations;
-  create table if not exists supabase_migrations.schema_migrations (
-    version text primary key, statements text[], name text
-  );
-`);
+// Status untuk langkah berikutnya di GitHub Actions (deploy Edge Function memakai token yang sama).
+const setOutput = (key, value) => {
+  if (process.env.GITHUB_OUTPUT) fs.appendFileSync(process.env.GITHUB_OUTPUT, `${key}=${value}\n`);
+};
+
+try {
+  await query(`
+    create schema if not exists supabase_migrations;
+    create table if not exists supabase_migrations.schema_migrations (
+      version text primary key, statements text[], name text
+    );
+  `);
+} catch (e) {
+  // Token ditolak: integrasi GitHub Supabase ("Supabase Preview") tetap menerapkan
+  // migrasi & Edge Function dari branch main, jadi CI tidak dibuat gagal.
+  if (/^HTTP (401|403)\b/.test(e.message)) {
+    console.log(
+      '::warning::SUPABASE_ACCESS_TOKEN ditolak Supabase (' + e.message.slice(0, 8) + '). ' +
+        'Migrasi & Edge Function tetap diterapkan integrasi GitHub Supabase. Agar jalur CI ini juga aktif, ' +
+        'buat Personal Access Token baru (diawali sbp_) di https://supabase.com/dashboard/account/tokens ' +
+        'lalu simpan ulang sebagai secret SUPABASE_ACCESS_TOKEN.'
+    );
+    setOutput('token_ok', 'false');
+    process.exit(0);
+  }
+  throw e;
+}
+setOutput('token_ok', 'true');
 const applied = new Set((await query('select version from supabase_migrations.schema_migrations')).map((r) => r.version));
 
 const files = fs.readdirSync(dir).filter((f) => /^\d{14}_.+\.sql$/.test(f)).sort();

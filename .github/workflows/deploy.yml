@@ -114,23 +114,26 @@ jobs:
 
       # Lewat Management API dengan access token: tidak butuh kata sandi database.
       # Migrasi dijalankan dulu karena Edge Function memakai RPC dari migrasi terbaru.
+      # Bila token ditolak, langkah ini memberi peringatan (bukan gagal) karena
+      # integrasi GitHub Supabase juga menerapkan migrasi & Edge Function.
       - name: Jalankan migrasi database
+        id: migrate
         if: steps.check.outputs.ready == 'true'
         run: node scripts/apply-migrations.mjs
 
       - uses: supabase/setup-cli@v1
-        if: steps.check.outputs.ready == 'true'
+        if: steps.migrate.outputs.token_ok == 'true'
         with:
           version: latest
 
       - name: Deploy Edge Functions (weekly-reminder, admin-users)
-        if: steps.check.outputs.ready == 'true'
+        if: steps.migrate.outputs.token_ok == 'true'
         run: |
           supabase functions deploy weekly-reminder --no-verify-jwt --project-ref "$SUPABASE_PROJECT_REF" --yes
           supabase functions deploy admin-users --no-verify-jwt --project-ref "$SUPABASE_PROJECT_REF" --yes
 
       - name: Setel secret Edge Function (opsional)
-        if: steps.check.outputs.ready == 'true'
+        if: steps.migrate.outputs.token_ok == 'true'
         run: |
           if [ -n "$CRON_SECRET" ]; then supabase secrets set --yes --project-ref "$SUPABASE_PROJECT_REF" CRON_SECRET="$CRON_SECRET"; fi
           if [ -n "$PORTAL_URL" ]; then supabase secrets set --yes --project-ref "$SUPABASE_PROJECT_REF" PORTAL_URL="$PORTAL_URL"; fi
