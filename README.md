@@ -27,6 +27,7 @@ supabase/
     20261104000002_hardening.sql          indeks FK & RLS per aksi (saran Supabase Advisor)
     20261104010601_departments_admin_only_read.sql  nama & WA pejabat bagian hanya untuk admin
     20261114000001_otomasi_periode_kode_admin.sql   buka periode otomatis, kode akses massal, kelola admin
+    20261114064000_revoke_rls_auto_enable.sql       fungsi event trigger bawaan tidak bisa dipanggil lewat RPC
   functions/
     _shared/rundown.js              aturan rundown & template WA (dipakai frontend + Edge Function)
     _shared/hijri.js                kalender Hijriah (Umm al-Qura) & rencana pembukaan periode

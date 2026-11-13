@@ -213,7 +213,7 @@ export function createSupabaseAdapter() {
     /** Picu Edge Function yang sama dengan pg_cron (untuk uji atau susulan). */
     async runCron(week) {
       const { data, error } = await sb.functions.invoke('weekly-reminder', { body: { force: true, week } });
-      if (error) throw new Error(error.message);
+      if (error) throw new Error(await functionError(error));
       return data;
     },
   };

@@ -66,10 +66,8 @@ export function StoreProvider({ children }) {
         setAdapter(ad);
         const s = await ad.getSession();
         setSession(s);
-        off = ad.onAuthChange((info) => {
-          setSession(info);
-          setReportsByCycle({});
-        });
+        // Cache laporan dikosongkan & dimuat ulang oleh efek sessionKey di bawah.
+        off = ad.onAuthChange((info) => setSession(info));
         const b = await ad.loadBase();
         setBase(b);
         const act = b.cycles.find((c) => c.status === 'aktif') || b.cycles[0];
@@ -100,14 +98,20 @@ export function StoreProvider({ children }) {
       firstSession.current = false;
       return;
     }
+    // Data laporan bergantung pada hak akses: kosongkan cache (isi laporan admin tidak
+    // tertinggal setelah keluar), lalu muat ulang siklus tampilan DAN siklus sebelumnya
+    // (target program & laporan terlambat bulan lalu).
+    setReportsByCycle({});
     (async () => {
       const b = await refreshBase(adapter);
       const cyc = b.cycles.find((c) => c.id === viewCycleId) || b.cycles.find((c) => c.status === 'aktif');
       if (cyc) {
-        await loadReports(adapter, cyc.id, true);
+        const p = prevHijriMonth(cyc.hijri_month, cyc.hijri_year);
+        const prev = b.cycles.find((c) => c.hijri_month === p.month && c.hijri_year === p.year);
+        await Promise.all([loadReports(adapter, cyc.id, true), prev && loadReports(adapter, prev.id, true)]);
         setQueue(await adapter.loadQueue(cyc.id));
       }
-    })();
+    })().catch((e) => notify(e.message || String(e), 'error'));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionKey]);
 
