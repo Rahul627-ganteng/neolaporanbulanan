@@ -1,6 +1,6 @@
 // Adapter Mode Demo: seluruh data disimpan di memori + localStorage peramban
 // (khusus pengguna ini). Antarmukanya identik dengan supabase-adapter.js.
-import { createDemoState, demoUid } from './demo-seed.js';
+import { createDemoState, createDemoTeachers, demoUid } from './demo-seed.js';
 import { normalizeWa } from '../constants.js';
 import { todayIso } from '../hijri.js';
 
@@ -66,9 +66,15 @@ export function createDemoAdapter() {
       persist();
       return clone(clean);
     },
-    async setAccessCode(deptId) {
+    async setAccessCode(deptId, code) {
       const d = db.departments.find((x) => x.id === deptId);
-      if (d) d.has_access_code = true; // demo: kode tidak diperiksa
+      const kode = String(code || '').trim().toUpperCase();
+      if (d) {
+        d.has_access_code = true;
+        d.kode_pribadi_at = null;
+      }
+      (db.passwords ||= {})[deptId] = kode;
+      (db.codes ||= {})[deptId] = { kode, sumber: 'admin', updated_at: new Date().toISOString() };
       persist();
     },
 
@@ -139,11 +145,12 @@ export function createDemoAdapter() {
         submitted_at: r.submitted_at || now,
         pembimbing_approved_at: r.pembimbing_approved_at || now,
       });
+      // Pejabat bagian diingat dari laporan terbaru (sama dengan trigger di database).
       const d = db.departments.find((x) => x.id === departmentId);
       if (d) {
-        d.sekretaris_nama ||= payload.sekretaris_nama;
-        d.ketua_nama ||= payload.ketua_nama;
-        d.pembimbing_nama ||= payload.pembimbing_nama;
+        d.sekretaris_nama = payload.sekretaris_nama || d.sekretaris_nama;
+        d.ketua_nama = payload.ketua_nama || d.ketua_nama;
+        d.pembimbing_nama = payload.pembimbing_nama || d.pembimbing_nama;
       }
       persist();
       return clone(r);
@@ -195,6 +202,9 @@ export function createDemoAdapter() {
         const bytes = crypto.getRandomValues(new Uint8Array(6));
         const kode = Array.from(bytes, (b) => alphabet[b % alphabet.length]).join('');
         d.has_access_code = true;
+        d.kode_pribadi_at = null;
+        (db.passwords ||= {})[d.id] = kode;
+        (db.codes ||= {})[d.id] = { kode, sumber: 'admin', updated_at: new Date().toISOString() };
         rows.push({ department_id: d.id, no: d.no, nama: d.nama, kode });
       }
       persist();
@@ -228,23 +238,77 @@ export function createDemoAdapter() {
       if (!d) throw new Error('Bagian tidak ditemukan.');
       const pw = String(password || '').trim().toUpperCase();
       const own = db.passwords?.[departmentId];
-      if (own ? pw !== own : pw.length < 6) throw new Error(own ? 'Sandi bagian salah.' : 'Mode demo: ketik sandi apa saja, minimal 6 karakter.');
+      db.kodeAwal ??= 'DEMO123';
+      const viaOwn = Boolean(own) && pw === own;
+      const viaShared = !viaOwn && !d.kode_pribadi_at && Boolean(db.kodeAwal) && pw === db.kodeAwal;
+      if (!viaOwn && !viaShared) {
+        throw new Error(d.kode_pribadi_at ? 'Kode salah. Bagian ini sudah membuat kode sendiri; bila lupa, minta admin mengatur ulang.' : `Kode salah. Mode demo: kode awal bersama ${db.kodeAwal}.`);
+      }
       const token = `demo-${Array.from(crypto.getRandomValues(new Uint8Array(24)), (b) => b.toString(16).padStart(2, '0')).join('')}`;
       db.sessions ||= {};
       db.sessions[token] = departmentId;
+      if (viaShared) (db.pendingSetup ||= {})[token] = true;
       persist();
       return {
         token,
         expires_at: new Date(Date.now() + 30 * 86400000).toISOString(),
         department: { id: d.id, no: d.no, nama: d.nama },
+        perlu_setup: viaShared || !d.profil_at,
+        kode_bersama: viaShared,
       };
+    },
+    async departmentSetup(token, profile, newCode) {
+      const id = db.sessions?.[token];
+      if (!id) throw new Error('Sesi bagian berakhir. Silakan masuk lagi.');
+      const d = db.departments.find((x) => x.id === id);
+      const kw = normalizeWa(profile.ketua_wa);
+      const sw = normalizeWa(profile.sekretaris_wa);
+      const kode = String(newCode || '').trim().toUpperCase();
+      if (!profile.ketua_nama?.trim() && !profile.sekretaris_nama?.trim()) throw new Error('Isi nama Ketua atau Sekretaris Bagian.');
+      if ((kw && !/^62\d{8,13}$/.test(kw)) || (sw && !/^62\d{8,13}$/.test(sw))) throw new Error('Nomor WA tidak valid. Gunakan format 08xx atau 628xx.');
+      if (!kw && !sw) throw new Error('Isi minimal satu nomor WA yang bisa dihubungi.');
+      if (db.pendingSetup?.[token] && !kode) throw new Error('Buat kode akses baru untuk bagian Anda (minimal 6 karakter).');
+      if (kode && kode.length < 6) throw new Error('Kode akses minimal 6 karakter.');
+      if (kode && kode === db.kodeAwal) throw new Error('Kode baru tidak boleh sama dengan kode awal bersama.');
+      Object.assign(d, {
+        ketua_nama: profile.ketua_nama?.trim() || d.ketua_nama,
+        sekretaris_nama: profile.sekretaris_nama?.trim() || d.sekretaris_nama,
+        pembimbing_nama: profile.pembimbing_nama?.trim() || d.pembimbing_nama,
+        ketua_wa: kw || d.ketua_wa,
+        sekretaris_wa: sw || d.sekretaris_wa,
+        profil_at: new Date().toISOString(),
+      });
+      if (kode) {
+        (db.passwords ||= {})[id] = kode;
+        (db.codes ||= {})[id] = { kode, sumber: 'bagian', updated_at: new Date().toISOString() };
+        d.kode_pribadi_at = new Date().toISOString();
+        d.has_access_code = true;
+        for (const [t, dep] of Object.entries(db.sessions)) if (dep === id && t !== token) delete db.sessions[t];
+      }
+      if (db.pendingSetup) delete db.pendingSetup[token];
+      persist();
+      return { ok: true, kode_diganti: Boolean(kode) };
+    },
+    async loadAccessOverview() {
+      db.kodeAwal ??= 'DEMO123';
+      return clone({
+        codes: Object.entries(db.codes || {}).map(([department_id, c]) => ({ department_id, ...c })),
+        kode_awal: db.kodeAwal || '',
+        kode_awal_at: null,
+      });
+    },
+    async setSharedCode(code) {
+      const k = String(code || '').trim().toUpperCase();
+      if (k && k.length < 6) throw new Error('Kode awal bersama minimal 6 karakter');
+      db.kodeAwal = k;
+      persist();
     },
     async departmentLogout(token) {
       if (db.sessions) delete db.sessions[token];
       persist();
     },
     async departmentDashboard({ token, departmentId }) {
-      const id = token ? db.sessions?.[token] : departmentId;
+      const id = token ? (db.pendingSetup?.[token] ? null : db.sessions?.[token]) : departmentId;
       if (!id) throw new Error('Sesi bagian berakhir. Silakan masuk lagi.');
       const d = db.departments.find((x) => x.id === id);
       const start = new Map(db.cycles.map((c) => [c.id, c.start_date]));
@@ -256,6 +320,8 @@ export function createDemoAdapter() {
         department: {
           id: d.id, no: d.no, nama: d.nama, is_active: d.is_active !== false,
           sekretaris_nama: d.sekretaris_nama, ketua_nama: d.ketua_nama, pembimbing_nama: d.pembimbing_nama,
+          ketua_wa: d.ketua_wa || null, sekretaris_wa: d.sekretaris_wa || null,
+          profil_at: d.profil_at || null, kode_pribadi_at: d.kode_pribadi_at || null,
         },
         reports,
       });
@@ -264,11 +330,15 @@ export function createDemoAdapter() {
       const id = db.sessions?.[token];
       if (!id) throw new Error('Sesi bagian berakhir. Silakan masuk lagi.');
       const own = db.passwords?.[id];
-      if (own && String(current || '').trim().toUpperCase() !== own) throw new Error('Sandi lama salah.');
+      if (own && String(current || '').trim().toUpperCase() !== own) throw new Error('Kode lama salah.');
       const pw = String(next || '').trim().toUpperCase();
-      if (pw.length < 8) throw new Error('Sandi baru minimal 8 karakter.');
+      if (pw.length < 6) throw new Error('Kode baru minimal 6 karakter.');
+      if (pw === db.kodeAwal) throw new Error('Kode baru tidak boleh sama dengan kode awal bersama.');
       db.passwords ||= {};
       db.passwords[id] = pw;
+      (db.codes ||= {})[id] = { kode: pw, sumber: 'bagian', updated_at: new Date().toISOString() };
+      const dd = db.departments.find((x) => x.id === id);
+      if (dd) dd.kode_pribadi_at = new Date().toISOString();
       for (const [t, dep] of Object.entries(db.sessions)) if (dep === id && t !== token) delete db.sessions[t];
       persist();
     },
@@ -278,6 +348,44 @@ export function createDemoAdapter() {
       const prev = db.cycles.filter((x) => x.start_date < c.start_date).sort((a, b) => b.start_date.localeCompare(a.start_date))[0];
       const r = prev && db.reports.find((x) => x.cycle_id === prev.id && x.department_id === departmentId && x.submitted_at);
       return clone((r?.programs || []).map(({ urutan, judul, kategori, target }) => ({ urutan, judul, kategori, target })));
+    },
+    async formContext({ departmentId } = {}) {
+      db.teachers ||= createDemoTeachers(db.departments);
+      const d = departmentId ? db.departments.find((x) => x.id === departmentId) : null;
+      return clone({
+        department: d
+          ? { id: d.id, ketua_nama: d.ketua_nama, sekretaris_nama: d.sekretaris_nama, pembimbing_nama: d.pembimbing_nama, ketua_wa: d.ketua_wa || null, sekretaris_wa: d.sekretaris_wa || null, profil_at: d.profil_at || null, kode_pribadi_at: d.kode_pribadi_at || null }
+          : null,
+        teachers: db.teachers.filter((t) => t.is_active !== false).map(({ nama, tahun, kelompok }) => ({ nama, tahun, kelompok })),
+      });
+    },
+    async replaceTeachers(rows) {
+      db.teachers ||= [];
+      const key = (s) => String(s || '').trim().toLowerCase();
+      const incoming = new Map();
+      rows.forEach((r) => {
+        if (!r.nama || /senior/i.test(`${r.kelompok} ${r.tahun}`) || incoming.has(key(r.nama))) return;
+        incoming.set(key(r.nama), r);
+      });
+      const before = new Map(db.teachers.map((t) => [key(t.nama), t]));
+      let baru = 0;
+      let off = 0;
+      db.teachers.forEach((t) => {
+        if (t.is_active !== false && !incoming.has(key(t.nama))) {
+          t.is_active = false;
+          off += 1;
+        }
+      });
+      incoming.forEach((r, k) => {
+        const t = before.get(k);
+        if (t) Object.assign(t, { nama: r.nama, tahun: r.tahun || null, kelompok: r.kelompok || null, is_active: true });
+        else {
+          db.teachers.push({ nama: r.nama, tahun: r.tahun || null, kelompok: r.kelompok || null, is_active: true });
+          baru += 1;
+        }
+      });
+      persist();
+      return { aktif: incoming.size, baru, dinonaktifkan: off };
     },
     async setReportFeedback(reportId, catatan) {
       const r = findReport(reportId);

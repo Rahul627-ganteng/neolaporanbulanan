@@ -29,6 +29,8 @@ supabase/
     20261114000001_otomasi_periode_kode_admin.sql   buka periode otomatis, kode akses massal, kelola admin
     20261114064000_revoke_rls_auto_enable.sql       fungsi event trigger bawaan tidak bisa dipanggil lewat RPC
     20261114120000_akun_bagian_evaluasi.sql         akun & dasbor bagian, evaluasi program, catatan admin
+    20261114130000_direktori_guru.sql               daftar guru (tanpa data di repo) & pejabat bagian diingat
+    20261114140000_kode_awal_profil_bagian.sql      kode awal bersama, login pertama, kode tercatat untuk admin
   functions/
     _shared/rundown.js              aturan rundown & template WA (dipakai frontend + Edge Function)
     _shared/hijri.js                kalender Hijriah (Umm al-Qura) & rencana pembukaan periode
@@ -49,6 +51,8 @@ scripts/build-artifact.mjs          membangun prototipe single-file dari kode ya
 - `notification_queue` — antrean pengingat WA (diisi pg_cron atau admin, dikirim manual).
 - `app_admins` — akun Supabase Auth yang berhak mengelola; diisi otomatis dari `app_admin_emails`.
 - `department_sessions` — sesi akun bagian (hash SHA-256 token acak, berlaku 30 hari); `department_login_failures` — percobaan sandi salah (dikunci 15 menit setelah 10 kali).
+- `teachers` — daftar guru KMI tanpa Guru Senior, untuk mencari nama Ketua & Sekretaris. **Datanya tidak ada di repo (repo publik)**: dimuat admin dari Excel absen guru (Data Bagian → Perbarui dari Excel).
+- `portal_settings` — kode awal bersama (teks & hash); `department_codes` — kode tiap bagian yang tercatat untuk admin (dari admin atau buatan bagian). Keduanya hanya bisa dibaca admin.
 - `monthly_reports.evaluasi_program` — penilaian program kerja bulan lalu (terlaksana / sebagian / belum + catatan); `catatan_admin` — tanggapan Sektor Guru KMI yang tampil di dasbor bagian.
 
 ---
@@ -116,12 +120,16 @@ Admin berikutnya ditambahkan dari aplikasi (**Periode & Admin → Akun admin**):
 ---
 
 ## Akun & dasbor bagian
-- **Satu rahasia per bagian.** Kode akses dari admin = sandi awal akun bagian. Bagian dapat menggantinya di dasbor (min. 8 karakter); sandi baru otomatis juga menjadi kode formulir tanpa masuk. Huruf besar/kecil tidak dibedakan.
+- **Kode awal bersama.** Satu kode untuk semua bagian (Data Bagian → Kode awal bersama, ada tombol salin pengumuman WA). Hanya berlaku untuk *masuk* dan hanya bagi bagian yang belum membuat kode sendiri. Kode unik per bagian dari admin tetap berlaku.
+- **Login pertama.** Bagian wajib melengkapi nama & nomor WA Ketua/Sekretaris (minimal satu WA) dan Pembimbing. Bila masuk dengan kode bersama, bagian wajib membuat kode sendiri (min. 6 karakter, bebas); sebelum itu sesinya tidak bisa membuka fitur lain. Setelah kode sendiri dibuat, kode bersama tidak berlaku lagi untuk bagian itu.
+- **Kode tercatat untuk admin.** Kode dari admin maupun buatan bagian tersimpan di `department_codes` dan tampil di Data Bagian (tombol *Tampilkan kode*). Layar bagian memberi tahu hal ini dan meminta tidak memakai kata sandi pribadi. Verifikasi tetap memakai hash bcrypt.
+- **Satu rahasia per bagian.** Kode bagian = sandi akun = kode formulir tanpa masuk. Bagian dapat menggantinya di dasbor (min. 6 karakter). Huruf besar/kecil tidak dibedakan.
+- **Pejabat bagian diingat & dicari dari daftar guru.** Kolom Ketua/Sekretaris di formulir, login pertama, dan Data Bagian mencari nama dari `teachers` (setelah kode/sesi/admin terverifikasi). Setiap laporan terkirim menyimpan nama pejabat terbaru ke data bagian (`remember_department_officials`), lalu terisi sendiri di laporan berikutnya.
 - **Bukan Supabase Auth.** `department_login` memeriksa hash bcrypt di `departments`, lalu memberi token acak 30 hari (yang disimpan hanya hash-nya). Tidak perlu email, tidak terkena batas login Auth walau 48 bagian memakai Wi-Fi pondok yang sama.
 - **Dasbor bagian** (`department_dashboard`): headline rundown minggu berjalan & tenggat, tahapan laporan bulan ini, statistik (terkirim, tepat waktu, keterlaksanaan program, unggulan & inovasi), program kerja terbaru, kendala yang berulang ≥ 2 bulan, program yang belum terlaksana, grafik program per klasifikasi, riwayat lengkap per bulan + unduh Word resmi, dan ganti sandi.
 - **Admin**: menu **Dasbor Bagian** (atau tombol **Dasbor** di Data Bagian) membuka dasbor bagian mana pun dan menulis **catatan** per laporan (`set_report_feedback`), yang tampil di dasbor bagian.
 - **Pencabutan sesi**: admin mengatur ulang kode (per bagian atau "semua bagian") → bagian itu keluar dari semua perangkat. Bagian mengganti sandi → perangkat lain keluar.
-- **Lupa sandi**: admin mengatur kode baru di **Data Bagian → Ubah** lalu mengirimkannya ke Sekretaris.
+- **Lupa kode**: admin melihat kodenya di Data Bagian, atau mengatur kode baru di **Data Bagian → Ubah** (bagian lalu login pertama lagi dan bisa membuat kode sendiri).
 
 ## Otomatisasi pengingat (pg_cron + Edge Function)
 - Setiap hari 06.05 WIB, `cron.schedule('kmi-weekly-reminder')` memanggil `public.trigger_weekly_reminder()` → `net.http_post` ke Edge Function dengan secret `cron_secret` dari Vault. Edge Function mencocokkan token itu langsung ke Vault (`check_cron_secret`), jadi `CRON_SECRET` di env fungsi bersifat opsional.

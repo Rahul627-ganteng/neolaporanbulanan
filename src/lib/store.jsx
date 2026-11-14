@@ -14,6 +14,8 @@ export function StoreProvider({ children }) {
   const [bagian, setBagian] = useState(() => loadBagianSession());
   const [departmentData, setDepartmentData] = useState({});
   const [dashboardDeptId, setDashboardDeptId] = useState(null);
+  // Direktori guru (nama Ketua/Sekretaris); dibuka setelah kode/sesi/admin terverifikasi.
+  const [teachers, setTeachers] = useState(null);
   const [base, setBase] = useState({ periods: [], cycles: [], departments: [] });
   const [viewCycleId, setViewCycleId] = useState(null);
   const [reportsByCycle, setReportsByCycle] = useState({});
@@ -95,7 +97,8 @@ export function StoreProvider({ children }) {
   }, []);
 
   // muat ulang data ketika sesi admin berubah (login/logout di produksi)
-  const sessionKey = session ? `${session.email}:${session.isAdmin}` : 'anon';
+  // Hak akses efektif (Mode Demo: mencoba akun bagian = tampilan non-admin).
+  const sessionKey = `${session?.email || 'anon'}:${Boolean(session?.isAdmin) && !(adapter?.mode === 'demo' && bagian)}`;
   const firstSession = useRef(true);
   useEffect(() => {
     if (!adapter || phase !== 'ready') return;
@@ -154,6 +157,8 @@ export function StoreProvider({ children }) {
       if (!adapter || !departmentId) return null;
       if (!force && departmentData[departmentId]) return departmentData[departmentId];
       const own = bagian && bagian.department.id === departmentId;
+      // Sesi dari kode awal bersama baru bisa membuka data setelah login pertama selesai.
+      if (own && bagian.perlu_setup && bagian.kode_bersama) return null;
       try {
         const data = await adapter.departmentDashboard({ token: own ? bagian.token : null, departmentId: own ? null : departmentId });
         setDepartmentData((m) => ({ ...m, [departmentId]: data }));
@@ -262,6 +267,7 @@ export function StoreProvider({ children }) {
         throw e;
       }
       await reloadCycle(args.cycleId);
+      if (isAdmin) refreshBase().catch(() => {}); // pejabat bagian yang tersimpan ikut diperbarui
       if (departmentData[args.departmentId] || bagian?.department.id === args.departmentId) {
         loadDepartmentData(args.departmentId, true).catch(() => {});
       }
@@ -291,6 +297,21 @@ export function StoreProvider({ children }) {
       });
       if (token) await adapter.departmentLogout(token).catch(() => {});
     }, 'Anda telah keluar dari akun bagian.'),
+    bagianSetup: (profile, newCode) => run(async () => {
+      const out = await adapter.departmentSetup(bagian?.token, profile, newCode);
+      const s = { ...bagian, perlu_setup: false, kode_bersama: false };
+      saveBagianSession(s, true);
+      setBagian(s);
+      setDepartmentData((m) => {
+        const next = { ...m };
+        delete next[s.department.id];
+        return next;
+      });
+      refreshBase().catch(() => {});
+      return out;
+    }, null),
+    loadAccessOverview: () => adapter.loadAccessOverview(),
+    setSharedCode: (code) => run(() => adapter.setSharedCode(code), code ? 'Kode awal bersama disimpan.' : 'Kode awal bersama dinonaktifkan.'),
     bagianChangePassword: (current, next) => run(async () => {
       try {
         await adapter.departmentChangePassword(bagian?.token, current, next);
@@ -298,10 +319,21 @@ export function StoreProvider({ children }) {
         if (isExpiredSessionError(e)) dropBagian();
         throw e;
       }
-    }, 'Sandi bagian diganti. Perangkat lain yang memakai akun ini perlu masuk ulang, dan kode akses formulir ikut berganti.'),
+    }, 'Kode bagian diganti dan tercatat di data admin. Perangkat lain yang memakai akun ini perlu masuk ulang.'),
     loadDepartmentData,
     setDashboardDeptId,
     previousPrograms: (args) => adapter.previousPrograms(args),
+    loadFormContext: async (args = {}) => {
+      const ctx = await adapter.formContext(args);
+      if (Array.isArray(ctx?.teachers)) setTeachers(ctx.teachers);
+      return ctx;
+    },
+    replaceTeachers: (rows) => run(async () => {
+      const out = await adapter.replaceTeachers(rows);
+      const ctx = await adapter.formContext({});
+      setTeachers(ctx?.teachers || []);
+      return out;
+    }, null),
     setReportFeedback: (report, catatan) => run(async () => {
       await adapter.setReportFeedback(report.id, catatan);
       await loadDepartmentData(report.department_id, true);
@@ -369,7 +401,12 @@ export function StoreProvider({ children }) {
 
   const value = {
     phase, loadError, toast, today, mode: adapter?.mode || 'demo', session, isAdmin,
-    bagian, departmentData, dashboardDeptId,
+    bagian, departmentData, dashboardDeptId, teachers,
+    // Login pertama: kode bersama belum diganti, atau kontak bagian belum dilengkapi.
+    needsSetup: Boolean(
+      bagian &&
+        (bagian.perlu_setup && bagian.kode_bersama ? true : departmentData[bagian.department.id]?.department ? !departmentData[bagian.department.id].department.profil_at : bagian.perlu_setup)
+    ),
     periods: base.periods, cycles, departments, activeDepartments,
     activeCycle, viewCycle, prevCycle, period, activePeriod, prevOf,
     reports, prevReports, reportByDept, prevReportByDept, targetsByDept, reportsByCycle, queue, week,

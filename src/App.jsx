@@ -17,6 +17,7 @@ import Periods, { OpenCycleModal } from './components/Periods.jsx';
 import Blueprint from './components/Blueprint.jsx';
 import LoginModal from './components/LoginModal.jsx';
 import BagianDashboard from './components/BagianDashboard.jsx';
+import BagianSetup from './components/BagianSetup.jsx';
 import Logo from './components/Logo.jsx';
 
 const TABS = [
@@ -231,7 +232,7 @@ function PeriodBar({ tab, go, tabs, onLogin, onOpenCycle }) {
 
 export default function App() {
   const store = useStore();
-  const { phase, loadError, isAdmin, toast, viewCycle, mode, bagian } = store;
+  const { phase, loadError, isAdmin, toast, viewCycle, mode, bagian, needsSetup } = store;
   const tabs = TABS.filter((t) => (!t.admin || isAdmin) && (!t.account || isAdmin || bagian) && (!t.artifactOnly || IS_ARTIFACT));
   const [tab, go] = useHashTab(tabs.map((t) => t.id));
   const [loginOpen, setLoginOpen] = useState(false);
@@ -301,6 +302,7 @@ export default function App() {
       </footer>
       <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} onBagian={() => go('saya')} />
       <OpenCycleModal open={cycleOpen} onClose={() => setCycleOpen(false)} />
+      {needsSetup && <BagianSetup open mode="first" />}
       <Toast toast={toast} />
     </div>
   );

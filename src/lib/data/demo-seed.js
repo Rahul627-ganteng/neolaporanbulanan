@@ -326,3 +326,16 @@ export function createDemoState(today) {
 }
 
 export const demoUid = uid;
+
+/** Daftar guru fiktif untuk Mode Demo (data asli hanya ada di database produksi). */
+export function createDemoTeachers(departments = []) {
+  const TAHUN = ['I', 'I', 'II', 'II', 'III', 'IV', 'V', 'VI', 'VII'];
+  const KELOMPOK = { I: 'Guru Tahun Pertama', II: 'Guru Tahun Kedua', III: 'Guru Tahun Ketiga', IV: 'Guru Tahun Keempat', V: 'Guru Tahun Kelima', VI: 'Guru Tahun Keenam', VII: 'Guru Asyab' };
+  const names = new Set();
+  for (const d of departments) for (const n of [d.ketua_nama, d.sekretaris_nama]) if (n) names.add(n.replace(/^Ust\.\s*/, ''));
+  for (let i = 0; names.size < 140 && i < 600; i += 1) names.add(`${FIRST[i % FIRST.length]} ${LAST[(i * 7 + Math.floor(i / FIRST.length)) % LAST.length]}`);
+  return [...names].sort().map((nama, i) => {
+    const tahun = TAHUN[(i * 5) % TAHUN.length];
+    return { nama, tahun, kelompok: KELOMPOK[tahun], is_active: true };
+  });
+}

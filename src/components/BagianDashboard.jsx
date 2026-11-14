@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import {
-  AlertTriangle, Building2, CheckCircle2, ChevronDown, Circle, Download, FileEdit, KeyRound, ListChecks, MessageSquare, Repeat, Target,
+  AlertTriangle, Building2, CheckCircle2, ChevronDown, Circle, Contact, Download, FileEdit, KeyRound, ListChecks, MessageSquare, Pencil, Repeat, Target,
 } from 'lucide-react';
 import { useStore } from '../lib/store.jsx';
 import {
@@ -13,6 +13,8 @@ import { evalScore, evalStatus } from '../lib/evaluasi.js';
 import { reportDocxBlob, reportDocxFilename } from '../lib/docx-report.js';
 import { saveFile } from '../lib/files.js';
 import { Badge, Button, Callout, cx, Empty, Field, Input, Panel, Progress, Select, Textarea } from './ui.jsx';
+import BagianSetup from './BagianSetup.jsx';
+import { formatWa } from '../lib/constants.js';
 
 const CAT_COLOR = { unggulan: '#1E3A8A', inovasi: '#2563EB', tindak_lanjut: '#60A5FA', reguler: '#CBD5E1' };
 const INK = '#0F172A';
@@ -306,8 +308,8 @@ function PasswordPanel() {
   const [busy, setBusy] = useState(false);
   const submit = async (e) => {
     e.preventDefault();
-    if (f.next.trim().length < 8) return actions.notify('Sandi baru minimal 8 karakter.', 'error');
-    if (f.next.trim().toUpperCase() !== f.again.trim().toUpperCase()) return actions.notify('Kedua sandi baru tidak sama.', 'error');
+    if (f.next.trim().length < 6) return actions.notify('Kode baru minimal 6 karakter.', 'error');
+    if (f.next.trim().toUpperCase() !== f.again.trim().toUpperCase()) return actions.notify('Kedua kode baru tidak sama.', 'error');
     setBusy(true);
     try {
       await actions.bagianChangePassword(f.now, f.next);
@@ -320,26 +322,57 @@ function PasswordPanel() {
     return undefined;
   };
   return (
-    <Panel eyebrow="Keamanan akun bagian" title="Ganti sandi">
+    <Panel eyebrow="Keamanan akun bagian" title="Ganti kode akses">
       <form onSubmit={submit} className="flex flex-col gap-3">
         <p className="text-[13px] leading-relaxed text-muted">
-          Sandi awal adalah kode akses dari admin. Sandi baru juga menjadi kode akses formulir tanpa masuk, dan perangkat lain yang memakai akun ini akan keluar. Huruf besar dan kecil tidak dibedakan.
+          Kode ini dipakai untuk masuk dan untuk formulir tanpa masuk. Kode tercatat di data admin Sektor Guru KMI agar bisa dibantu bila lupa, jadi jangan memakai kata sandi pribadi. Perangkat lain yang memakai akun ini akan keluar. Huruf besar dan kecil tidak dibedakan.
         </p>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <Field label="Sandi sekarang">
+        <div className="grid grid-cols-1 gap-3">
+          <Field label="Kode sekarang">
             <Input id="bpw-now" type="password" autoComplete="current-password" required value={f.now} onChange={(e) => setF((x) => ({ ...x, now: e.target.value }))} />
           </Field>
-          <Field label="Sandi baru (min. 8)">
+          <Field label="Kode baru (min. 6)">
             <Input id="bpw-new" type="password" autoComplete="new-password" required value={f.next} onChange={(e) => setF((x) => ({ ...x, next: e.target.value }))} />
           </Field>
-          <Field label="Ulangi sandi baru">
+          <Field label="Ulangi kode baru">
             <Input id="bpw-again" type="password" autoComplete="new-password" required value={f.again} onChange={(e) => setF((x) => ({ ...x, again: e.target.value }))} />
           </Field>
         </div>
         <div>
-          <Button type="submit" icon={KeyRound} busy={busy}>Simpan sandi baru</Button>
+          <Button type="submit" icon={KeyRound} busy={busy}>Simpan kode baru</Button>
         </div>
       </form>
+    </Panel>
+  );
+}
+
+// ------------------------------------------------------------------ kontak bagian
+function ContactPanel({ dept, canEdit, isAdmin }) {
+  const [edit, setEdit] = useState(false);
+  const rows = [
+    ['Ketua', dept.ketua_nama, dept.ketua_wa],
+    ['Sekretaris', dept.sekretaris_nama, dept.sekretaris_wa],
+    ['Pembimbing', dept.pembimbing_nama, null],
+  ];
+  return (
+    <Panel
+      eyebrow={dept.profil_at ? `Diperbarui ${formatTimestamp(dept.profil_at)}` : 'Belum dilengkapi bagian'}
+      title="Kontak bagian"
+      actions={canEdit ? <Button size="sm" icon={Pencil} onClick={() => setEdit(true)}>Ubah kontak</Button> : null}
+    >
+      <ul className="flex flex-col divide-y divide-line">
+        {rows.map(([role, nama, wa]) => (
+          <li key={role} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 py-2 first:pt-0 last:pb-0">
+            <span className="text-[12px] font-semibold uppercase tracking-[0.08em] text-muted">{role}</span>
+            <span className="min-w-0 text-right text-[14px] text-ink">
+              <span className="font-semibold">{nama || '—'}</span>
+              {role !== 'Pembimbing' && <span className="block text-[12.5px] text-muted tabular-nums">{wa ? formatWa(wa) : 'WA belum diisi'}</span>}
+            </span>
+          </li>
+        ))}
+      </ul>
+      {isAdmin && dept.kode_pribadi_at && <p className="mt-3 text-[12.5px] text-muted">Bagian membuat kode sendiri {formatTimestamp(dept.kode_pribadi_at)}.</p>}
+      {edit && <BagianSetup open mode="edit" onClose={() => setEdit(false)} />}
     </Panel>
   );
 }
@@ -353,12 +386,13 @@ export default function BagianDashboard({ go }) {
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState('');
 
+  // Muat ulang bila data bagian belum ada (pertama kali, setelah login pertama, atau setelah disegarkan).
   useEffect(() => {
-    if (!deptId) return;
+    if (!deptId || data) return;
     setErr('');
     actions.loadDepartmentData(deptId).catch((e) => setErr(e.message || String(e)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deptId]);
+  }, [deptId, data, bagian?.perlu_setup]);
 
   const cycById = useMemo(() => new Map(cycles.map((c) => [c.id, c])), [cycles]);
   const reports = useMemo(
@@ -606,7 +640,10 @@ export default function BagianDashboard({ go }) {
             )}
           </Panel>
 
-          {viewingOwn && !isAdmin && <PasswordPanel />}
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <ContactPanel dept={dept} canEdit={viewingOwn && !isAdmin} isAdmin={isAdmin} />
+            {viewingOwn && !isAdmin && <PasswordPanel />}
+          </div>
         </>
       ) : null}
     </div>

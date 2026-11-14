@@ -7,6 +7,7 @@ import { formatTimestamp } from '../lib/hijri.js';
 import { routineHits, toPayload, validateReport } from '../lib/validation.js';
 import { Button, Callout, cx, Field, Input, Panel, Select, Textarea } from './ui.jsx';
 import { ReminderCardModal } from './ReminderCard.jsx';
+import NameCombobox from './NameCombobox.jsx';
 
 const emptyForm = (cycleId = '') => ({
   cycle_id: cycleId,
@@ -81,7 +82,7 @@ function StringList({ idPrefix, items, onChange, placeholder, renderExtra, addLa
 }
 
 export default function ReportForm({ go }) {
-  const { cycles, activeCycle, prevCycle, viewCycle, activeDepartments, departments, reportsByCycle, isAdmin, mode, today, week, actions, loadReports, bagian, departmentData } = useStore();
+  const { cycles, activeCycle, prevCycle, viewCycle, activeDepartments, departments, reportsByCycle, isAdmin, mode, today, week, actions, loadReports, bagian, departmentData, teachers } = useStore();
   // Masuk sebagai bagian: bagian terkunci, kode akses diganti token sesi.
   const asBagian = Boolean(bagian) && !isAdmin;
   const ownId = asBagian ? bagian.department.id : null;
@@ -157,9 +158,9 @@ export default function ReportForm({ go }) {
   };
 
   useEffect(() => {
-    if (ownId) actions.loadDepartmentData(ownId).catch(() => {});
+    if (ownId && !ownData) actions.loadDepartmentData(ownId).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ownId]);
+  }, [ownId, ownData, bagian?.perlu_setup]);
 
   // Bagian yang masuk: formulir otomatis memakai bagiannya (dan isi laporannya bila sudah ada).
   const autoPick = useRef('');
@@ -208,6 +209,37 @@ export default function ReportForm({ go }) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cycle?.id, form.department_id, secret, isAdmin, asBagian, ownData]);
+
+  // Pejabat bagian yang tersimpan + daftar guru (setelah kode/sesi/admin terverifikasi).
+  useEffect(() => {
+    if (!form.department_id) return undefined;
+    if (!isAdmin && !asBagian && mode === 'supabase' && (secret || '').length < 6) return undefined;
+    let off = false;
+    const deptId = form.department_id;
+    const t = setTimeout(async () => {
+      try {
+        const ctx = await actions.loadFormContext({ departmentId: deptId, secret });
+        if (off || !ctx?.department) return;
+        setForm((f) =>
+          f.department_id !== deptId
+            ? f
+            : {
+                ...f,
+                ketua_nama: f.ketua_nama || ctx.department.ketua_nama || '',
+                sekretaris_nama: f.sekretaris_nama || ctx.department.sekretaris_nama || '',
+                pembimbing_nama: f.pembimbing_nama || ctx.department.pembimbing_nama || '',
+              }
+        );
+      } catch {
+        /* kode belum benar: daftar guru belum dibuka */
+      }
+    }, isAdmin || asBagian ? 0 : 450);
+    return () => {
+      off = true;
+      clearTimeout(t);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.department_id, secret, isAdmin, asBagian]);
 
   const setEval = (i, p) => {
     setForm((f) => ({ ...f, evaluasi: f.evaluasi.map((e, j) => (j === i ? { ...e, ...p } : e)) }));
@@ -292,24 +324,15 @@ export default function ReportForm({ go }) {
                   })}
                 </Select>
               </Field>
-              <Field label="Sekretaris Bagian">
-                <Input id="f-sek" value={form.sekretaris_nama} onChange={(e) => patch({ sekretaris_nama: e.target.value })} placeholder="Ust. …" />
-              </Field>
-              <Field label="Ketua Bagian">
-                <Input id="f-ketua" value={form.ketua_nama} onChange={(e) => patch({ ketua_nama: e.target.value })} placeholder="Ust. …" />
-              </Field>
-              <Field label="Pembimbing Bagian">
-                <Input id="f-pemb" value={form.pembimbing_nama} onChange={(e) => patch({ pembimbing_nama: e.target.value })} placeholder="Ust. …" />
-              </Field>
               {asBagian ? (
-                <div className="flex items-end">
+                <div className="flex items-end sm:col-span-2">
                   <p className="flex items-start gap-2 rounded-lg border border-emerald-300/60 bg-emerald-50 px-3 py-2.5 text-[13px] leading-snug text-emerald-900">
                     <ShieldCheck className="mt-0.5 size-4 shrink-0" aria-hidden />
                     <span>Masuk sebagai <strong>{bagian.department.nama}</strong>. Kode akses tidak perlu diisi.</span>
                   </p>
                 </div>
               ) : requireCode ? (
-                <Field label="Kode akses bagian" hint="Diberikan admin kepada Sekretaris Bagian.">
+                <Field className="sm:col-span-2" label="Kode akses bagian" hint="Dari admin. Setelah kode benar, nama pejabat yang tersimpan terisi sendiri dan nama guru bisa dicari.">
                   <Input
                     id="f-code"
                     type="text"
@@ -317,15 +340,15 @@ export default function ReportForm({ go }) {
                     autoCapitalize="characters"
                     spellCheck={false}
                     maxLength={32}
-                    className="font-mono uppercase tracking-[0.2em]"
+                    className="font-mono uppercase tracking-[0.2em] sm:max-w-[260px]"
                     placeholder="6 karakter"
                     value={form.access_code}
                     onChange={(e) => patch({ access_code: e.target.value.toUpperCase() })}
                   />
                 </Field>
-              ) : (
-                <div className="flex items-end">
-                  {mode === 'demo' && (
+              ) : mode === 'demo' ? (
+                <div className="sm:col-span-2">
+                  {(
                     <Button
                       variant="ghost"
                       icon={Sparkles}
@@ -342,7 +365,30 @@ export default function ReportForm({ go }) {
                     </Button>
                   )}
                 </div>
-              )}
+              ) : null}
+              <Field label="Ketua Bagian">
+                <NameCombobox
+                  id="f-ketua"
+                  value={form.ketua_nama}
+                  onChange={(v) => patch({ ketua_nama: v })}
+                  options={teachers || []}
+                  placeholder="Nama Ketua Bagian"
+                  disabledHint={requireCode && form.department_id ? 'Isi kode akses dulu untuk mencari dari daftar guru.' : ''}
+                />
+              </Field>
+              <Field label="Sekretaris Bagian">
+                <NameCombobox
+                  id="f-sek"
+                  value={form.sekretaris_nama}
+                  onChange={(v) => patch({ sekretaris_nama: v })}
+                  options={teachers || []}
+                  placeholder="Nama Sekretaris Bagian"
+                  disabledHint={requireCode && form.department_id ? 'Isi kode akses dulu untuk mencari dari daftar guru.' : ''}
+                />
+              </Field>
+              <Field label="Pembimbing Bagian" className="sm:col-span-2" hint="Nama pejabat diingat dari laporan terakhir dan bisa diubah bila berganti.">
+                <Input id="f-pemb" value={form.pembimbing_nama} onChange={(e) => patch({ pembimbing_nama: e.target.value })} placeholder="Nama Pembimbing Bagian" />
+              </Field>
             </div>
 
             {existing?.submitted_at && (

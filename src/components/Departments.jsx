@@ -1,12 +1,92 @@
-import React, { useMemo, useState } from 'react';
-import { Building2, FileSpreadsheet, Key, Pencil, Plus, Search, Users } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Building2, Eye, EyeOff, FileSpreadsheet, GraduationCap, Key, Megaphone, Pencil, Plus, Search, Shuffle, Users } from 'lucide-react';
 import { useStore } from '../lib/store.jsx';
 import { formatWa, normalizeWa } from '../lib/constants.js';
 import { Badge, Button, Callout, Empty, Field, Input, Modal, Panel } from './ui.jsx';
-import { AccessCodesModal, ImportDepartmentsModal } from './DepartmentTools.jsx';
+import { AccessCodesModal, ImportDepartmentsModal, ImportTeachersModal } from './DepartmentTools.jsx';
+import NameCombobox from './NameCombobox.jsx';
+import { copyText } from '../lib/files.js';
+import { PORTAL_URL } from '../lib/env.js';
+
+const ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+const randomCode = () => Array.from(crypto.getRandomValues(new Uint8Array(6)), (b) => ALPHABET[b % ALPHABET.length]).join('');
+
+function SharedCodeCard({ access, onSaved }) {
+  const { actions } = useStore();
+  const [show, setShow] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const current = access?.kode_awal || '';
+  const save = async () => {
+    setBusy(true);
+    try {
+      await actions.setSharedCode(code.trim().toUpperCase());
+      setEditing(false);
+      onSaved();
+    } catch {
+      /* toast tampil */
+    } finally {
+      setBusy(false);
+    }
+  };
+  const announce = async () => {
+    const text = [
+      "Assalamu'alaikum warahmatullahi wabarakatuh.",
+      'Yth. Ketua & Sekretaris Bagian Sektor Guru KMI.',
+      '',
+      `*Portal Laporan Bulanan:* ${PORTAL_URL || 'https://neolaporanbulanan.netlify.app'}`,
+      `Masuk → tab *Bagian* → pilih nama bagian → kode awal: *${current}*`,
+      '',
+      'Saat masuk pertama kali, lengkapi nama & nomor WA Ketua/Sekretaris dan buat kode akses bagian sendiri. Setelah itu kode awal tidak berlaku lagi untuk bagian antum.',
+      '',
+      'Jazakumullah khairan.',
+      '— Admin Laporan Bulanan Sektor Guru KMI',
+    ].join('\n');
+    actions.notify((await copyText(text)) ? 'Pengumuman tersalin. Tempel di grup WhatsApp.' : 'Salin ditolak peramban.');
+  };
+  return (
+    <div className="flex flex-col gap-3 rounded-[14px] border border-line bg-white px-5 py-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-start gap-3">
+          <Key className="mt-0.5 size-5 shrink-0 text-brand" aria-hidden />
+          <div className="min-w-0">
+            <p className="text-[14px] font-semibold text-ink">
+              Kode awal bersama:{' '}
+              {current ? (
+                <span className="font-mono tracking-[0.18em]">{show ? current : '••••••'}</span>
+              ) : (
+                <span className="text-muted">belum diatur</span>
+              )}
+            </p>
+            <p className="text-[12.5px] text-muted">
+              Satu kode untuk semua bagian yang belum membuat kode sendiri. Saat masuk pertama, bagian wajib melengkapi kontak dan membuat kode sendiri.
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {current && <Button size="sm" variant="ghost" icon={show ? EyeOff : Eye} onClick={() => setShow((v) => !v)}>{show ? 'Sembunyikan' : 'Lihat'}</Button>}
+          {current && <Button size="sm" icon={Megaphone} onClick={announce}>Salin pengumuman WA</Button>}
+          <Button size="sm" icon={Pencil} onClick={() => { setCode(current || randomCode()); setEditing((v) => !v); }}>{current ? 'Ganti' : 'Atur'}</Button>
+        </div>
+      </div>
+      {editing && (
+        <div className="flex flex-wrap items-end gap-2 border-t border-line pt-3">
+          <Field label="Kode awal baru (min. 6)">
+            <Input id="shared-code" className="w-48 font-mono uppercase tracking-[0.18em]" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} />
+          </Field>
+          <Button icon={Shuffle} variant="ghost" onClick={() => setCode(randomCode())}>Acak</Button>
+          <Button variant="primary" busy={busy} disabled={code.trim().length < 6} onClick={save}>Simpan</Button>
+          {current && <Button variant="ghost" onClick={() => { setCode(''); }}>Kosongkan</Button>}
+          <p className="w-full text-[12px] text-muted">Mengganti kode awal tidak memengaruhi bagian yang sudah membuat kode sendiri. Kosongkan lalu simpan untuk menonaktifkan.</p>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function EditModal({ dept, onClose }) {
-  const { actions, mode } = useStore();
+  const { actions, mode, teachers } = useStore();
   const [d, setD] = useState(dept);
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
@@ -46,11 +126,15 @@ function EditModal({ dept, onClose }) {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label="Nomor urut"><Input id="d-no" type="number" min={1} value={d.no} onChange={(e) => setD((x) => ({ ...x, no: Number(e.target.value) }))} /></Field>
         <Field label="Nama bagian"><Input id="d-nama" value={d.nama} onChange={set('nama')} /></Field>
-        <Field label="Nama Ketua Bagian"><Input id="d-ketua" value={d.ketua_nama || ''} onChange={set('ketua_nama')} placeholder="Ust. …" /></Field>
+        <Field label="Nama Ketua Bagian">
+          <NameCombobox id="d-ketua" value={d.ketua_nama || ''} onChange={(v) => setD((x) => ({ ...x, ketua_nama: v }))} options={teachers || []} placeholder="Nama Ketua Bagian" />
+        </Field>
         <Field label="WA Ketua" hint={waBad(d.ketua_wa) ? 'Format tidak valid' : d.ketua_wa ? `Disimpan sebagai ${normalizeWa(d.ketua_wa)}` : 'Contoh 0812xxxxxxx'}>
           <Input id="d-ketua-wa" inputMode="tel" value={d.ketua_wa || ''} onChange={set('ketua_wa')} />
         </Field>
-        <Field label="Nama Sekretaris Bagian"><Input id="d-sek" value={d.sekretaris_nama || ''} onChange={set('sekretaris_nama')} placeholder="Ust. …" /></Field>
+        <Field label="Nama Sekretaris Bagian">
+          <NameCombobox id="d-sek" value={d.sekretaris_nama || ''} onChange={(v) => setD((x) => ({ ...x, sekretaris_nama: v }))} options={teachers || []} placeholder="Nama Sekretaris Bagian" />
+        </Field>
         <Field label="WA Sekretaris" hint={waBad(d.sekretaris_wa) ? 'Format tidak valid' : d.sekretaris_wa ? `Disimpan sebagai ${normalizeWa(d.sekretaris_wa)}` : 'Contoh 0812xxxxxxx'}>
           <Input id="d-sek-wa" inputMode="tel" value={d.sekretaris_wa || ''} onChange={set('sekretaris_wa')} />
         </Field>
@@ -74,7 +158,20 @@ function EditModal({ dept, onClose }) {
 }
 
 export default function Departments({ go }) {
-  const { departments, mode, actions } = useStore();
+  const { departments, mode, actions, teachers } = useStore();
+  const [teachersOpen, setTeachersOpen] = useState(false);
+  const [access, setAccess] = useState(null);
+  const [reveal, setReveal] = useState(false);
+  const loadAccess = () => actions.loadAccessOverview().then(setAccess).catch(() => setAccess({ codes: [], kode_awal: '' }));
+  useEffect(() => {
+    loadAccess();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [departments]);
+  const codeOf = useMemo(() => new Map((access?.codes || []).map((c) => [c.department_id, c])), [access]);
+  useEffect(() => {
+    if (teachers === null) actions.loadFormContext({}).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [q, setQ] = useState('');
   const [edit, setEdit] = useState(null);
   const [codesOpen, setCodesOpen] = useState(false);
@@ -98,7 +195,9 @@ export default function Departments({ go }) {
           <ul className="list-disc pl-4">
             {noCode > 0 && (
               <li>
-                {noCode} bagian belum punya kode akses, jadi sekretarisnya belum bisa mengirim laporan.{' '}
+                {access?.kode_awal
+                  ? `${noCode} bagian belum punya kode sendiri; mereka bisa masuk dengan kode awal bersama, tetapi formulir tanpa masuk butuh kode bagian.`
+                  : `${noCode} bagian belum punya kode akses, jadi sekretarisnya belum bisa mengirim laporan.`}{' '}
                 <button type="button" className="font-semibold underline underline-offset-2" onClick={() => setCodesOpen(true)}>Buat kode sekarang</button>
               </li>
             )}
@@ -111,6 +210,21 @@ export default function Departments({ go }) {
           </ul>
         </Callout>
       )}
+      <SharedCodeCard access={access} onSaved={loadAccess} />
+      <div className="flex flex-col gap-3 rounded-[14px] border border-line bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-start gap-3">
+          <GraduationCap className="mt-0.5 size-5 shrink-0 text-brand" aria-hidden />
+          <div className="min-w-0">
+            <p className="text-[14px] font-semibold text-ink">
+              Daftar guru untuk pencarian nama Ketua & Sekretaris: {teachers === null ? 'memuat…' : `${teachers.length} guru aktif`}
+            </p>
+            <p className="text-[12.5px] text-muted">Tanpa Guru Senior. Perbarui dari Excel absen guru setiap awal tahun ajaran.</p>
+          </div>
+        </div>
+        <Button size="sm" icon={FileSpreadsheet} onClick={() => setTeachersOpen(true)}>
+          Perbarui dari Excel
+        </Button>
+      </div>
       <Panel
         eyebrow={`${departments.length} bagian · ${filled} lengkap dengan nomor WA`}
         title="Data master bagian Sektor Guru KMI"
@@ -121,6 +235,7 @@ export default function Departments({ go }) {
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
               <Input id="dept-search" className="h-9 w-56 pl-9" placeholder="Cari bagian/nama" value={q} onChange={(e) => setQ(e.target.value)} />
             </div>
+            <Button size="sm" variant="ghost" icon={reveal ? EyeOff : Eye} onClick={() => setReveal((v) => !v)}>{reveal ? 'Sembunyikan kode' : 'Tampilkan kode'}</Button>
             <Button size="sm" icon={FileSpreadsheet} onClick={() => setImportOpen(true)}>Impor dari spreadsheet</Button>
             <Button size="sm" icon={Key} onClick={() => setCodesOpen(true)}>Kode akses massal</Button>
             <Button size="sm" icon={Plus} onClick={() => setEdit({ no: departments.length + 1, nama: '', is_active: true })}>Tambah bagian</Button>
@@ -157,7 +272,26 @@ export default function Departments({ go }) {
                       <p className="text-[12px] text-muted tabular-nums">{d.sekretaris_wa ? formatWa(d.sekretaris_wa) : 'WA kosong'}</p>
                     </td>
                     <td className="px-3 py-2.5 text-ink">{d.pembimbing_nama || '—'}</td>
-                    <td className="px-3 py-2.5">{d.has_access_code ? <Badge tone="ok" icon={Key}>diatur</Badge> : <Badge>belum</Badge>}</td>
+                    <td className="px-3 py-2.5">
+                      {(() => {
+                        const c = codeOf.get(d.id);
+                        return (
+                          <div className="flex flex-col items-start gap-1">
+                            {c ? (
+                              <span className="font-mono text-[13px] font-semibold tracking-[0.14em] text-ink">{reveal ? c.kode : '••••••'}</span>
+                            ) : d.has_access_code ? (
+                              <Badge tone="ok" icon={Key}>diatur</Badge>
+                            ) : (
+                              <Badge>{access?.kode_awal ? 'kode awal' : 'belum'}</Badge>
+                            )}
+                            <span className="flex flex-wrap gap-1">
+                              {d.kode_pribadi_at ? <Badge tone="ok">dibuat bagian</Badge> : c ? <Badge>dari admin</Badge> : null}
+                              {d.profil_at ? <Badge tone="brand">kontak ✓</Badge> : null}
+                            </span>
+                          </div>
+                        );
+                      })()}
+                    </td>
                     <td className="py-2.5 pl-3 pr-5 text-right">
                       <div className="flex justify-end gap-1">
                         <Button
@@ -184,6 +318,7 @@ export default function Departments({ go }) {
       {edit && <EditModal dept={edit} onClose={() => setEdit(null)} />}
       <AccessCodesModal open={codesOpen} onClose={() => setCodesOpen(false)} />
       <ImportDepartmentsModal open={importOpen} onClose={() => setImportOpen(false)} />
+      <ImportTeachersModal open={teachersOpen} onClose={() => setTeachersOpen(false)} />
     </div>
   );
 }

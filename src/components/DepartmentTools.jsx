@@ -1,11 +1,12 @@
 import React, { useMemo, useState } from 'react';
 import JSZip from 'jszip';
-import { AlertTriangle, Copy, Download, Key, MessageCircle, Table2, Upload } from 'lucide-react';
+import { AlertTriangle, Copy, Download, GraduationCap, Key, MessageCircle, Table2, Upload } from 'lucide-react';
 import { useStore } from '../lib/store.jsx';
 import { buildAccessCodeMessage, formatWa, normalizeWa, waLink } from '../lib/constants.js';
 import { buildXlsx } from '../lib/exports.js';
 import { copyText, saveFile } from '../lib/files.js';
 import { PORTAL_URL } from '../lib/env.js';
+import { groupCounts, parseTeacherTable } from '../lib/teachers.js';
 import { Badge, Button, Callout, cx, Modal, Textarea } from './ui.jsx';
 
 // =====================================================================
@@ -178,7 +179,7 @@ const COLS = [
   { key: 'pembimbing_nama', label: 'Nama Pembimbing', match: /pembimbing/ },
 ];
 
-function parseDelimited(text) {
+export function parseDelimited(text) {
   const firstLine = text.split(/\r?\n/).find((l) => l.trim()) || '';
   const delim = firstLine.includes('\t') ? '\t' : (firstLine.match(/;/g) || []).length > (firstLine.match(/,/g) || []).length ? ';' : ',';
   const rows = [];
@@ -212,7 +213,7 @@ function parseDelimited(text) {
   return rows.map((r) => r.map((c) => c.trim())).filter((r) => r.some(Boolean));
 }
 
-async function parseXlsx(file) {
+export async function parseXlsx(file) {
   const zip = await JSZip.loadAsync(await file.arrayBuffer());
   const xml = (path) => zip.file(path)?.async('string');
   const dom = (s) => new DOMParser().parseFromString(s, 'application/xml');
@@ -434,6 +435,101 @@ export function ImportDepartmentsModal({ open, onClose }) {
               </div>
             )}
             {result.items.length > 0 && changes.length === 0 && <Badge tone="ok">Tidak ada perubahan dibanding data saat ini</Badge>}
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+// =====================================================================
+//  Daftar guru (untuk mencari nama Ketua & Sekretaris Bagian)
+// =====================================================================
+export function ImportTeachersModal({ open, onClose }) {
+  const { actions } = useStore();
+  const [parsed, setParsed] = useState(null);
+  const [fileName, setFileName] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const close = () => {
+    setParsed(null);
+    setFileName('');
+    onClose();
+  };
+
+  const onFile = async (e) => {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    if (!f) return;
+    try {
+      const table = /\.xlsx$/i.test(f.name) ? await parseXlsx(f) : parseDelimited(await f.text());
+      const out = parseTeacherTable(table);
+      if (!out.teachers.length) throw new Error('Tidak ada nama guru yang terbaca. Pastikan ada kolom "Nama".');
+      setParsed(out);
+      setFileName(f.name);
+    } catch (err) {
+      setParsed(null);
+      actions.notify(err.message || 'Berkas tidak dapat dibaca.', 'error');
+    }
+  };
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      const out = await actions.replaceTeachers(parsed.teachers);
+      actions.notify(`Daftar guru diperbarui: ${out.aktif} aktif, ${out.baru} baru, ${out.dinonaktifkan} dinonaktifkan.`);
+      close();
+    } catch {
+      /* toast tampil */
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal
+      open={open}
+      onClose={close}
+      size="lg"
+      eyebrow="Data Bagian"
+      title="Perbarui daftar guru"
+      footer={
+        <>
+          <Button variant="ghost" onClick={close}>Batal</Button>
+          <Button variant="primary" icon={Upload} busy={busy} disabled={!parsed} onClick={save}>
+            Simpan {parsed ? `${parsed.teachers.length} guru` : ''}
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-4">
+        <p className="text-[13.5px] leading-relaxed text-ink">
+          Unggah Excel absen guru per angkatan (format seperti <strong>ABSEN GURU KMI</strong>: blok “Guru Tahun …” dengan kolom No, Nama, Tahun).
+          Guru Senior otomatis tidak dimasukkan. Nama yang tidak ada di berkas baru dinonaktifkan, tidak dihapus.
+        </p>
+        <label className="inline-flex w-fit cursor-pointer items-center gap-2 rounded-md border border-line px-3 py-2 text-[13px] font-semibold text-ink hover:bg-sky-wash">
+          <Upload className="size-4" /> Pilih berkas .xlsx / .csv
+          <input id="teachers-file" type="file" accept=".xlsx,.csv,.tsv,.txt" className="sr-only" onChange={onFile} />
+        </label>
+        {parsed && (
+          <div className="flex flex-col gap-3">
+            <Callout tone="ok" title={`${parsed.teachers.length} guru terbaca dari ${fileName}`}>
+              {parsed.senior ? `${parsed.senior} Guru Senior dilewati. ` : ''}Periksa ringkasan di bawah, lalu simpan.
+            </Callout>
+            <div className="flex flex-wrap gap-1.5">
+              {groupCounts(parsed.teachers).map(([g, n]) => (
+                <Badge key={g} tone="brand" icon={GraduationCap}>{g}: {n}</Badge>
+              ))}
+            </div>
+            <ul className="max-h-[30vh] overflow-y-auto rounded-lg border border-line text-[13px]">
+              {parsed.teachers.slice(0, 40).map((t) => (
+                <li key={t.nama} className="flex justify-between gap-3 border-b border-line px-3 py-1.5 last:border-b-0">
+                  <span className="text-ink">{t.nama}</span>
+                  <span className="shrink-0 text-muted">{t.tahun ? `Tahun ${t.tahun}` : ''}</span>
+                </li>
+              ))}
+              {parsed.teachers.length > 40 && <li className="px-3 py-1.5 text-muted">… dan {parsed.teachers.length - 40} nama lain</li>}
+            </ul>
           </div>
         )}
       </div>

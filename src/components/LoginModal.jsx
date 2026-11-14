@@ -41,7 +41,7 @@ function BagianLogin({ onDone }) {
           ))}
         </Select>
       </Field>
-      <Field label="Sandi bagian" hint="Sandi awal = kode akses 6 karakter yang dikirim admin lewat WhatsApp.">
+      <Field label="Kode akses bagian" hint="Masuk pertama kali: pakai kode awal bersama dari admin (sama untuk semua bagian) atau kode bagian yang dikirim admin. Setelah itu pakai kode buatan bagian sendiri.">
         <Input
           id="login-bagian-password"
           type="password"
@@ -58,7 +58,7 @@ function BagianLogin({ onDone }) {
         Ingat perangkat ini selama 30 hari
       </label>
       {err && <Callout tone="error">{err}</Callout>}
-      {mode === 'demo' && <Callout tone="info">Mode demo: pilih bagian mana saja dan ketik sandi apa saja minimal 6 karakter.</Callout>}
+      {mode === 'demo' && <Callout tone="info">Mode demo: pilih bagian mana saja, kode awal bersama <strong>DEMO123</strong>.</Callout>}
       <Button type="submit" variant="primary" icon={LogIn} busy={busy}>
         Masuk sebagai bagian
       </Button>

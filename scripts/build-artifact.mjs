@@ -123,6 +123,8 @@ const NOTES = {
   'supabase/migrations/20261103000003_cron_reminders.sql': 'pg_cron + pg_net harian',
   'supabase/functions/weekly-reminder/index.ts': 'Edge Function antrean pengingat',
   'supabase/migrations/20261114120000_akun_bagian_evaluasi.sql': 'Akun & dasbor bagian, evaluasi, catatan admin',
+  'supabase/migrations/20261114130000_direktori_guru.sql': 'Daftar guru & pejabat bagian diingat',
+  'supabase/migrations/20261114140000_kode_awal_profil_bagian.sql': 'Kode awal bersama & login pertama bagian',
   'supabase/functions/_shared/rundown.js': 'Aturan rundown & template WA (bersama)',
   '.github/workflows/deploy.yml': 'CI/CD: build → migrasi → deploy',
   'netlify.toml': 'Build, SPA redirect, header, env',

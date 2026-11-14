@@ -127,24 +127,32 @@ export function Progress({ value, max, tone = 'brand', className }) {
   );
 }
 
-export function Modal({ open, onClose, title, eyebrow, children, footer, size = 'md' }) {
+export function Modal({ open, onClose, title, eyebrow, children, footer, size = 'md', dismissible = true }) {
   const ref = useRef(null);
   const titleId = useId();
+  // onClose disimpan di ref: efek fokus hanya berjalan saat modal dibuka/ditutup,
+  // bukan setiap induk dirender ulang (mis. toast hilang) yang merebut fokus ketikan.
+  const closeRef = useRef(onClose);
+  closeRef.current = dismissible ? onClose : null;
   useEffect(() => {
     if (!open) return undefined;
-    const onKey = (e) => e.key === 'Escape' && onClose?.();
+    const onKey = (e) => e.key === 'Escape' && closeRef.current?.();
     document.addEventListener('keydown', onKey);
     const prev = document.activeElement;
-    setTimeout(() => ref.current?.querySelector('input,textarea,select,button')?.focus(), 30);
+    // Fokus awal ke isian pertama, kecuali pengguna sudah mengetik di dalam dialog.
+    const t = setTimeout(() => {
+      if (!ref.current?.contains(document.activeElement)) ref.current?.querySelector('input,textarea,select,button')?.focus();
+    }, 30);
     return () => {
+      clearTimeout(t);
       document.removeEventListener('keydown', onKey);
       prev?.focus?.();
     };
-  }, [open, onClose]);
+  }, [open]);
   if (!open) return null;
   const w = size === 'lg' ? 'max-w-4xl' : size === 'sm' ? 'max-w-md' : 'max-w-2xl';
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-ink/45 p-0 backdrop-blur-[2px] sm:items-center sm:p-6" onMouseDown={(e) => e.target === e.currentTarget && onClose?.()}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-ink/45 p-0 backdrop-blur-[2px] sm:items-center sm:p-6" onMouseDown={(e) => e.target === e.currentTarget && closeRef.current?.()}>
       <div
         ref={ref}
         role="dialog"
@@ -158,9 +166,11 @@ export function Modal({ open, onClose, title, eyebrow, children, footer, size = 
             {eyebrow && <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-brand">{eyebrow}</p>}
             <h3 id={titleId} className="font-serif text-lg font-semibold text-ink text-balance">{title}</h3>
           </div>
-          <button type="button" onClick={onClose} className="rounded-md p-1.5 text-muted hover:bg-sky-wash hover:text-ink focus-visible:outline-2 focus-visible:outline-brand" aria-label="Tutup">
-            <X className="size-5" />
-          </button>
+          {dismissible && (
+            <button type="button" onClick={onClose} className="rounded-md p-1.5 text-muted hover:bg-sky-wash hover:text-ink focus-visible:outline-2 focus-visible:outline-brand" aria-label="Tutup">
+              <X className="size-5" />
+            </button>
+          )}
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">{children}</div>
         {footer && <div className="flex flex-wrap items-center justify-end gap-2 border-t border-line bg-mist px-5 py-3">{footer}</div>}

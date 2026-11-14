@@ -5,7 +5,7 @@ import { normalizeWa } from '../constants.js';
 
 // Kolom eksplisit: hash kode akses tidak pernah dipilih (lihat grant kolom di skema).
 const DEPT_ADMIN_COLS =
-  'id,no,nama,sekretaris_nama,sekretaris_wa,ketua_nama,ketua_wa,pembimbing_nama,has_access_code,is_active';
+  'id,no,nama,sekretaris_nama,sekretaris_wa,ketua_nama,ketua_wa,pembimbing_nama,has_access_code,is_active,profil_at,kode_pribadi_at';
 const DEPT_PUBLIC_COLS = 'id,no,nama,is_active';
 
 function must({ data, error }) {
@@ -220,7 +220,29 @@ export function createSupabaseAdapter() {
         })
       );
       if (!out?.ok) throw new Error(out?.error || 'Gagal masuk.');
-      return { token: out.token, expires_at: out.expires_at, department: out.department };
+      return {
+        token: out.token,
+        expires_at: out.expires_at,
+        department: out.department,
+        perlu_setup: Boolean(out.perlu_setup),
+        kode_bersama: Boolean(out.kode_bersama),
+      };
+    },
+    async departmentSetup(token, profile, newCode) {
+      const out = must(await sb.rpc('department_setup', { p_token: token, p_profile: profile, p_new_code: newCode || null }));
+      if (!out?.ok) throw new Error(out?.error || 'Data bagian gagal disimpan.');
+      return out;
+    },
+    // Admin: kode tiap bagian (tercatat) & kode awal bersama.
+    async loadAccessOverview() {
+      const [codes, settings] = await Promise.all([
+        sb.from('department_codes').select('department_id,kode,sumber,updated_at').then(must),
+        sb.from('portal_settings').select('kode_awal,updated_at').maybeSingle().then(must),
+      ]);
+      return { codes, kode_awal: settings?.kode_awal || '', kode_awal_at: settings?.updated_at || null };
+    },
+    async setSharedCode(code) {
+      must(await sb.rpc('set_shared_code', { p_code: code }));
     },
     async departmentLogout(token) {
       await sb.rpc('department_logout', { p_token: token });
@@ -234,6 +256,13 @@ export function createSupabaseAdapter() {
     },
     async previousPrograms({ cycleId, departmentId, secret }) {
       return must(await sb.rpc('previous_programs', { p_cycle_id: cycleId, p_department_id: departmentId, p_secret: secret || null }));
+    },
+    // ----- direktori guru & pejabat tersimpan -----
+    async formContext({ departmentId, secret } = {}) {
+      return must(await sb.rpc('form_context', { p_department_id: departmentId || null, p_secret: secret || null }));
+    },
+    async replaceTeachers(rows) {
+      return must(await sb.rpc('replace_teachers', { p_rows: rows }));
     },
     async setReportFeedback(reportId, catatan) {
       must(await sb.rpc('set_report_feedback', { p_report_id: reportId, p_catatan: catatan }));
