@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { FileSpreadsheet, Key, Pencil, Plus, Search, Users } from 'lucide-react';
+import { Building2, FileSpreadsheet, Key, Pencil, Plus, Search, Users } from 'lucide-react';
 import { useStore } from '../lib/store.jsx';
 import { formatWa, normalizeWa } from '../lib/constants.js';
 import { Badge, Button, Callout, Empty, Field, Input, Modal, Panel } from './ui.jsx';
@@ -57,8 +57,8 @@ function EditModal({ dept, onClose }) {
         <Field label="Nama Pembimbing Bagian" className="sm:col-span-2"><Input id="d-pemb" value={d.pembimbing_nama || ''} onChange={set('pembimbing_nama')} placeholder="Ust. …" /></Field>
         {dept.id && (
           <Field
-            label={dept.has_access_code ? 'Ganti kode akses input laporan' : 'Atur kode akses input laporan'}
-            hint={mode === 'demo' ? 'Di Mode Demo kode tidak diperiksa.' : 'Minimal 6 karakter. Disimpan sebagai hash; berikan kepada Sekretaris Bagian.'}
+            label={dept.has_access_code ? 'Atur ulang kode akses / sandi akun bagian' : 'Atur kode akses / sandi akun bagian'}
+            hint={mode === 'demo' ? 'Di Mode Demo kode tidak diperiksa.' : 'Minimal 6 karakter. Kode ini juga sandi akun bagian; mengubahnya mengeluarkan bagian dari semua perangkat. Berikan kepada Sekretaris Bagian.'}
             className="sm:col-span-2"
           >
             <Input id="d-code" type="text" autoComplete="off" value={code} onChange={(e) => setCode(e.target.value)} placeholder="Kosongkan bila tidak diubah" />
@@ -73,8 +73,8 @@ function EditModal({ dept, onClose }) {
   );
 }
 
-export default function Departments() {
-  const { departments, mode } = useStore();
+export default function Departments({ go }) {
+  const { departments, mode, actions } = useStore();
   const [q, setQ] = useState('');
   const [edit, setEdit] = useState(null);
   const [codesOpen, setCodesOpen] = useState(false);
@@ -139,7 +139,7 @@ export default function Departments() {
                   <th className="px-3 py-2.5 font-semibold">Ketua</th>
                   <th className="px-3 py-2.5 font-semibold">Sekretaris</th>
                   <th className="px-3 py-2.5 font-semibold">Pembimbing</th>
-                  <th className="px-3 py-2.5 font-semibold">Kode akses</th>
+                  <th className="px-3 py-2.5 font-semibold">Kode / sandi</th>
                   <th className="py-2.5 pl-3 pr-5" />
                 </tr>
               </thead>
@@ -159,7 +159,20 @@ export default function Departments() {
                     <td className="px-3 py-2.5 text-ink">{d.pembimbing_nama || '—'}</td>
                     <td className="px-3 py-2.5">{d.has_access_code ? <Badge tone="ok" icon={Key}>diatur</Badge> : <Badge>belum</Badge>}</td>
                     <td className="py-2.5 pl-3 pr-5 text-right">
-                      <Button size="sm" variant="ghost" icon={Pencil} onClick={() => setEdit(d)}>Ubah</Button>
+                      <div className="flex justify-end gap-1">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          icon={Building2}
+                          onClick={() => {
+                            actions.setDashboardDeptId(d.id);
+                            go?.('saya');
+                          }}
+                        >
+                          Dasbor
+                        </Button>
+                        <Button size="sm" variant="ghost" icon={Pencil} onClick={() => setEdit(d)}>Ubah</Button>
+                      </div>
                     </td>
                   </tr>
                 ))}

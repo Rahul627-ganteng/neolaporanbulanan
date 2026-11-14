@@ -210,6 +210,35 @@ export function createSupabaseAdapter() {
       if (error) throw new Error(error.message);
     },
 
+    // ----- akun bagian (sesi token lewat RPC; bukan Supabase Auth) -----
+    async departmentLogin(departmentId, password) {
+      const out = must(
+        await sb.rpc('department_login', {
+          p_department_id: departmentId,
+          p_password: password,
+          p_user_agent: typeof navigator !== 'undefined' ? navigator.userAgent.slice(0, 200) : null,
+        })
+      );
+      if (!out?.ok) throw new Error(out?.error || 'Gagal masuk.');
+      return { token: out.token, expires_at: out.expires_at, department: out.department };
+    },
+    async departmentLogout(token) {
+      await sb.rpc('department_logout', { p_token: token });
+    },
+    async departmentDashboard({ token, departmentId }) {
+      return must(await sb.rpc('department_dashboard', { p_token: token || null, p_department_id: departmentId || null }));
+    },
+    async departmentChangePassword(token, current, next) {
+      const out = must(await sb.rpc('department_change_password', { p_token: token, p_current: current, p_new: next }));
+      if (!out?.ok) throw new Error(out?.error || 'Sandi gagal diganti.');
+    },
+    async previousPrograms({ cycleId, departmentId, secret }) {
+      return must(await sb.rpc('previous_programs', { p_cycle_id: cycleId, p_department_id: departmentId, p_secret: secret || null }));
+    },
+    async setReportFeedback(reportId, catatan) {
+      must(await sb.rpc('set_report_feedback', { p_report_id: reportId, p_catatan: catatan }));
+    },
+
     /** Picu Edge Function yang sama dengan pg_cron (untuk uji atau susulan). */
     async runCron(week) {
       const { data, error } = await sb.functions.invoke('weekly-reminder', { body: { force: true, week } });

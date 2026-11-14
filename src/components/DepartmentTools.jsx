@@ -103,7 +103,7 @@ export function AccessCodesModal({ open, onClose }) {
           <fieldset className="flex flex-col gap-2">
             {[
               { v: 'missing', t: `Hanya bagian yang belum punya kode (${missing} bagian)`, d: 'Kode yang sudah dibagikan tetap berlaku.' },
-              { v: 'all', t: `Buat ulang kode untuk semua bagian (${activeDepartments.length})`, d: 'Semua kode lama langsung tidak berlaku.' },
+              { v: 'all', t: `Buat ulang kode untuk semua bagian (${activeDepartments.length})`, d: 'Semua kode lama dan sandi akun bagian (termasuk yang sudah diganti bagian) langsung tidak berlaku; semua bagian keluar dari akunnya.' },
             ].map((o) => (
               <label key={o.v} className={cx('flex cursor-pointer gap-3 rounded-lg border px-4 py-3', scope === o.v ? 'border-brand bg-sky-wash' : 'border-line')}>
                 <input type="radio" name="code-scope" className="mt-1 accent-[#1D4ED8]" checked={scope === o.v} onChange={() => setScope(o.v)} />

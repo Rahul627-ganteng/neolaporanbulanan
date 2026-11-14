@@ -53,6 +53,10 @@ export function validateReport(form, { requireCode = false } = {}) {
   if (programs.length && !programs.some((p) => p.kategori === 'unggulan'))
     warnings.push('Belum ada program bertanda 🌟 Program Unggulan / Prioritas Utama.');
 
+  const evaluasi = form.evaluasi || [];
+  const unrated = evaluasi.filter((e) => !e.status).length;
+  if (unrated) warnings.push(`${unrated} program kerja bulan lalu belum dievaluasi (Terlaksana / Sebagian / Belum).`);
+
   if (!form.pernyataan_inovatif) errors.push('Centang pernyataan bahwa laporan sudah disetujui Pembimbing dan Hasil Usaha bersifat inovatif.');
   return { errors, warnings };
 }
@@ -69,6 +73,9 @@ export function toPayload(form) {
     programs: form.programs
       .filter((p) => p.judul.trim())
       .map((p) => ({ judul: p.judul.trim(), kategori: p.kategori, target: p.target?.trim() || '' })),
+    evaluasi_program: (form.evaluasi || [])
+      .filter((e) => e.status)
+      .map((e) => ({ judul: e.judul, kategori: e.kategori, target: e.target || null, status: e.status, catatan: e.catatan?.trim() || null })),
     pernyataan_inovatif: Boolean(form.pernyataan_inovatif),
   };
 }

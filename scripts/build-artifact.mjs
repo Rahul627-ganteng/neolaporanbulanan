@@ -122,6 +122,7 @@ const NOTES = {
   'supabase/migrations/20261103000002_seed_departments.sql': 'Seed 48 bagian & tahun ajaran awal',
   'supabase/migrations/20261103000003_cron_reminders.sql': 'pg_cron + pg_net harian',
   'supabase/functions/weekly-reminder/index.ts': 'Edge Function antrean pengingat',
+  'supabase/migrations/20261114120000_akun_bagian_evaluasi.sql': 'Akun & dasbor bagian, evaluasi, catatan admin',
   'supabase/functions/_shared/rundown.js': 'Aturan rundown & template WA (bersama)',
   '.github/workflows/deploy.yml': 'CI/CD: build → migrasi → deploy',
   'netlify.toml': 'Build, SPA redirect, header, env',

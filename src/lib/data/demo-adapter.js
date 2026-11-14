@@ -4,7 +4,7 @@ import { createDemoState, demoUid } from './demo-seed.js';
 import { normalizeWa } from '../constants.js';
 import { todayIso } from '../hijri.js';
 
-const KEY = 'kmi-laporan-demo-v2';
+const KEY = 'kmi-laporan-demo-v3';
 const clone = (v) => JSON.parse(JSON.stringify(v));
 
 function load() {
@@ -12,7 +12,7 @@ function load() {
     const raw = localStorage.getItem(KEY);
     if (raw) {
       const s = JSON.parse(raw);
-      if (s && s.version === 2) return s;
+      if (s && s.version === 3) return s;
     }
   } catch {
     /* penyimpanan tidak tersedia */
@@ -133,6 +133,7 @@ export function createDemoAdapter() {
         hasil_usaha: payload.hasil_usaha,
         kendala: payload.kendala,
         solusi: payload.solusi,
+        evaluasi_program: payload.evaluasi_program || [],
         pernyataan_inovatif: true,
         programs: payload.programs.map((p, i) => ({ ...p, id: demoUid('prg'), urutan: i + 1 })),
         submitted_at: r.submitted_at || now,
@@ -220,6 +221,72 @@ export function createDemoAdapter() {
       persist();
     },
     async changePassword() {},
+
+    // ----- akun bagian (demo: sandi apa saja ≥ 6 karakter sampai bagian menggantinya) -----
+    async departmentLogin(departmentId, password) {
+      const d = db.departments.find((x) => x.id === departmentId && x.is_active !== false);
+      if (!d) throw new Error('Bagian tidak ditemukan.');
+      const pw = String(password || '').trim().toUpperCase();
+      const own = db.passwords?.[departmentId];
+      if (own ? pw !== own : pw.length < 6) throw new Error(own ? 'Sandi bagian salah.' : 'Mode demo: ketik sandi apa saja, minimal 6 karakter.');
+      const token = `demo-${Array.from(crypto.getRandomValues(new Uint8Array(24)), (b) => b.toString(16).padStart(2, '0')).join('')}`;
+      db.sessions ||= {};
+      db.sessions[token] = departmentId;
+      persist();
+      return {
+        token,
+        expires_at: new Date(Date.now() + 30 * 86400000).toISOString(),
+        department: { id: d.id, no: d.no, nama: d.nama },
+      };
+    },
+    async departmentLogout(token) {
+      if (db.sessions) delete db.sessions[token];
+      persist();
+    },
+    async departmentDashboard({ token, departmentId }) {
+      const id = token ? db.sessions?.[token] : departmentId;
+      if (!id) throw new Error('Sesi bagian berakhir. Silakan masuk lagi.');
+      const d = db.departments.find((x) => x.id === id);
+      const start = new Map(db.cycles.map((c) => [c.id, c.start_date]));
+      const reports = db.reports
+        .filter((r) => r.department_id === id && start.has(r.cycle_id))
+        .sort((a, b) => start.get(b.cycle_id).localeCompare(start.get(a.cycle_id)))
+        .map((r) => ({ evaluasi_program: [], catatan_admin_at: null, ...r }));
+      return clone({
+        department: {
+          id: d.id, no: d.no, nama: d.nama, is_active: d.is_active !== false,
+          sekretaris_nama: d.sekretaris_nama, ketua_nama: d.ketua_nama, pembimbing_nama: d.pembimbing_nama,
+        },
+        reports,
+      });
+    },
+    async departmentChangePassword(token, current, next) {
+      const id = db.sessions?.[token];
+      if (!id) throw new Error('Sesi bagian berakhir. Silakan masuk lagi.');
+      const own = db.passwords?.[id];
+      if (own && String(current || '').trim().toUpperCase() !== own) throw new Error('Sandi lama salah.');
+      const pw = String(next || '').trim().toUpperCase();
+      if (pw.length < 8) throw new Error('Sandi baru minimal 8 karakter.');
+      db.passwords ||= {};
+      db.passwords[id] = pw;
+      for (const [t, dep] of Object.entries(db.sessions)) if (dep === id && t !== token) delete db.sessions[t];
+      persist();
+    },
+    async previousPrograms({ cycleId, departmentId }) {
+      const c = db.cycles.find((x) => x.id === cycleId);
+      if (!c) return [];
+      const prev = db.cycles.filter((x) => x.start_date < c.start_date).sort((a, b) => b.start_date.localeCompare(a.start_date))[0];
+      const r = prev && db.reports.find((x) => x.cycle_id === prev.id && x.department_id === departmentId && x.submitted_at);
+      return clone((r?.programs || []).map(({ urutan, judul, kategori, target }) => ({ urutan, judul, kategori, target })));
+    },
+    async setReportFeedback(reportId, catatan) {
+      const r = findReport(reportId);
+      if (r) {
+        r.catatan_admin = String(catatan || '').trim() || null;
+        r.catatan_admin_at = r.catatan_admin ? new Date().toISOString() : null;
+      }
+      persist();
+    },
 
     async resetDemo() {
       db = createDemoState(todayIso());

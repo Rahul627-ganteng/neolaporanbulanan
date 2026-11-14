@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
-  BarChart3, BellRing, CalendarRange, Code2, FileEdit, Inbox, LayoutDashboard, Lock, LogOut, RefreshCw, Users,
+  BarChart3, BellRing, Building2, CalendarRange, Code2, FileEdit, Inbox, LayoutDashboard, LogIn, LogOut, RefreshCw, Users,
 } from 'lucide-react';
 import { useStore } from './lib/store.jsx';
 import { cycleLabel, cycleMonthName, deadlineText, daysBetween, nextMonthLabel, RUNDOWN } from './lib/constants.js';
@@ -16,11 +16,13 @@ import Departments from './components/Departments.jsx';
 import Periods, { OpenCycleModal } from './components/Periods.jsx';
 import Blueprint from './components/Blueprint.jsx';
 import LoginModal from './components/LoginModal.jsx';
+import BagianDashboard from './components/BagianDashboard.jsx';
 import Logo from './components/Logo.jsx';
 
 const TABS = [
   { id: 'dasbor', label: 'Dasbor', icon: LayoutDashboard, admin: false },
   { id: 'input', label: 'Input Laporan', icon: FileEdit, admin: false },
+  { id: 'saya', label: 'Dasbor Bagian', icon: Building2, admin: false, account: true },
   { id: 'rundown', label: 'Rundown & Pengingat', icon: BellRing, admin: true },
   { id: 'laporan', label: 'Laporan Masuk', icon: Inbox, admin: true },
   { id: 'admin', label: 'Panel Admin', icon: BarChart3, admin: true },
@@ -54,7 +56,7 @@ function useHashTab(allowed) {
 }
 
 function Header({ hero, go }) {
-  const { today, viewCycle, isAdmin } = useStore();
+  const { today, viewCycle, isAdmin, bagian } = useStore();
   return (
     <header className={cx('kmi-header relative overflow-hidden text-white', hero && 'kmi-header--hero')}>
       <div className={cx('kmi-gutter relative mx-auto flex max-w-[1240px] flex-col justify-between gap-6', hero ? 'py-8 sm:py-12' : 'py-5 sm:py-6')}>
@@ -79,7 +81,9 @@ function Header({ hero, go }) {
         {hero && (
           <div className="flex max-w-[620px] flex-col gap-4 pt-6 sm:pt-14">
             <p className="font-serif text-[26px] font-semibold leading-snug text-balance sm:text-[34px]">
-              Ahlan wa sahlan. Laporan {viewCycle ? cycleMonthName(viewCycle) : 'bulan ini'} menunggu softfile dari setiap bagian.
+              {bagian && !isAdmin
+                ? `Ahlan wa sahlan, ${bagian.department.nama}. Laporan ${viewCycle ? cycleMonthName(viewCycle) : 'bulan ini'} menunggu softfile bagian Anda.`
+                : `Ahlan wa sahlan. Laporan ${viewCycle ? cycleMonthName(viewCycle) : 'bulan ini'} menunggu softfile dari setiap bagian.`}
             </p>
             {viewCycle && (
               <p className="max-w-[56ch] text-[14.5px] leading-relaxed text-blue-50/90">
@@ -94,6 +98,11 @@ function Header({ hero, go }) {
               <Button variant="primary" size="lg" icon={FileEdit} onClick={() => go('input')}>
                 Input laporan
               </Button>
+              {bagian && !isAdmin && (
+                <Button size="lg" variant="ghost" icon={Building2} className="bg-white/12 text-white ring-1 ring-white/30 hover:bg-white/20 hover:text-white" onClick={() => go('saya')}>
+                  Dasbor bagian
+                </Button>
+              )}
               {isAdmin && (
                 <Button size="lg" variant="ghost" icon={BellRing} className="bg-white/12 text-white ring-1 ring-white/30 hover:bg-white/20 hover:text-white" onClick={() => go('rundown')}>
                   Rundown & pengingat
@@ -118,7 +127,7 @@ function WeekPips({ week }) {
 }
 
 function PeriodBar({ tab, go, tabs, onLogin, onOpenCycle }) {
-  const { cycles, viewCycle, period, week, today, actions, isAdmin, mode, session, queue } = useStore();
+  const { cycles, viewCycle, period, week, today, actions, isAdmin, mode, session, queue, bagian } = useStore();
   const pending = queue.filter((q) => q.status === 'pending').length;
   const collecting = inCollectionWindow(viewCycle, today) && !viewCycle?.active_week;
   const left = viewCycle ? daysBetween(today, viewCycle.deadline_date) : 0;
@@ -170,16 +179,26 @@ function PeriodBar({ tab, go, tabs, onLogin, onOpenCycle }) {
               Buka Periode Baru
             </Button>
           )}
-          {mode === 'supabase' &&
-            (session ? (
-              <Button size="sm" variant="ghost" icon={LogOut} onClick={actions.signOut} title={session.email}>
-                Keluar
+          {bagian && (
+            <>
+              <Badge tone="ok" icon={Building2} className="max-w-[240px] overflow-hidden">
+                <span className="truncate">{bagian.department.nama}</span>
+              </Badge>
+              <Button size="sm" variant="ghost" icon={LogOut} onClick={actions.bagianLogout} title={`Keluar dari akun ${bagian.department.nama}`}>
+                Keluar bagian
               </Button>
-            ) : (
-              <Button size="sm" variant="navy" icon={Lock} onClick={onLogin}>
-                Masuk Admin
-              </Button>
-            ))}
+            </>
+          )}
+          {mode === 'supabase' && session && (
+            <Button size="sm" variant="ghost" icon={LogOut} onClick={actions.signOut} title={session.email}>
+              Keluar admin
+            </Button>
+          )}
+          {!bagian && !(mode === 'supabase' && session) && (
+            <Button size="sm" variant="navy" icon={LogIn} onClick={onLogin}>
+              {mode === 'demo' ? 'Coba akun bagian' : 'Masuk'}
+            </Button>
+          )}
         </div>
       </div>
       <nav className="kmi-gutter mx-auto max-w-[1240px]" aria-label="Menu utama">
@@ -212,8 +231,8 @@ function PeriodBar({ tab, go, tabs, onLogin, onOpenCycle }) {
 
 export default function App() {
   const store = useStore();
-  const { phase, loadError, isAdmin, toast, viewCycle, mode } = store;
-  const tabs = TABS.filter((t) => (!t.admin || isAdmin) && (!t.artifactOnly || IS_ARTIFACT));
+  const { phase, loadError, isAdmin, toast, viewCycle, mode, bagian } = store;
+  const tabs = TABS.filter((t) => (!t.admin || isAdmin) && (!t.account || isAdmin || bagian) && (!t.artifactOnly || IS_ARTIFACT));
   const [tab, go] = useHashTab(tabs.map((t) => t.id));
   const [loginOpen, setLoginOpen] = useState(false);
   const [cycleOpen, setCycleOpen] = useState(false);
@@ -267,7 +286,8 @@ export default function App() {
             {tab === 'rundown' && <Rundown />}
             {tab === 'laporan' && <Reports />}
             {tab === 'admin' && <AdminPanel />}
-            {tab === 'bagian' && <Departments />}
+            {tab === 'saya' && <BagianDashboard go={go} />}
+            {tab === 'bagian' && <Departments go={go} />}
             {tab === 'periode' && <Periods onOpenCycle={() => setCycleOpen(true)} />}
             {tab === 'blueprint' && <Blueprint />}
           </>
@@ -279,7 +299,7 @@ export default function App() {
           <span>{mode === 'demo' ? 'Mode Demo — data tersimpan di peramban ini saja' : 'Tersambung ke Supabase'}</span>
         </div>
       </footer>
-      <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} />
+      <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} onBagian={() => go('saya')} />
       <OpenCycleModal open={cycleOpen} onClose={() => setCycleOpen(false)} />
       <Toast toast={toast} />
     </div>

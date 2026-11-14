@@ -2,6 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { createAdapter } from './data/index.js';
 import { computeWeek, prevHijriMonth } from './constants.js';
 import { todayIso } from './hijri.js';
+import { clearBagianSession, isExpiredSessionError, loadBagianSession, saveBagianSession } from './bagian-session.js';
 
 const StoreCtx = createContext(null);
 export const useStore = () => useContext(StoreCtx);
@@ -9,6 +10,10 @@ export const useStore = () => useContext(StoreCtx);
 export function StoreProvider({ children }) {
   const [adapter, setAdapter] = useState(null);
   const [session, setSession] = useState(null);
+  // Akun bagian: token sesi (bukan Supabase Auth) + data dasbor per bagian.
+  const [bagian, setBagian] = useState(() => loadBagianSession());
+  const [departmentData, setDepartmentData] = useState({});
+  const [dashboardDeptId, setDashboardDeptId] = useState(null);
   const [base, setBase] = useState({ periods: [], cycles: [], departments: [] });
   const [viewCycleId, setViewCycleId] = useState(null);
   const [reportsByCycle, setReportsByCycle] = useState({});
@@ -135,7 +140,31 @@ export function StoreProvider({ children }) {
   const departments = useMemo(() => [...base.departments].sort((a, b) => a.no - b.no), [base.departments]);
   const activeDepartments = useMemo(() => departments.filter((d) => d.is_active !== false), [departments]);
   const week = computeWeek(viewCycle, today);
-  const isAdmin = Boolean(session?.isAdmin);
+  // Mode Demo selalu admin; saat mencoba akun bagian, tampilan berubah menjadi tampilan bagian.
+  const isAdmin = Boolean(session?.isAdmin) && !(adapter?.mode === 'demo' && bagian);
+
+  const dropBagian = useCallback(() => {
+    clearBagianSession();
+    setBagian(null);
+  }, []);
+
+  /** Data dasbor satu bagian: lewat token sesi bagian, atau jalur admin. */
+  const loadDepartmentData = useCallback(
+    async (departmentId, force = false) => {
+      if (!adapter || !departmentId) return null;
+      if (!force && departmentData[departmentId]) return departmentData[departmentId];
+      const own = bagian && bagian.department.id === departmentId;
+      try {
+        const data = await adapter.departmentDashboard({ token: own ? bagian.token : null, departmentId: own ? null : departmentId });
+        setDepartmentData((m) => ({ ...m, [departmentId]: data }));
+        return data;
+      } catch (e) {
+        if (own && isExpiredSessionError(e)) dropBagian();
+        throw e;
+      }
+    },
+    [adapter, bagian, departmentData, dropBagian]
+  );
 
   // ------- actions -------
   const run = useCallback(
@@ -225,11 +254,58 @@ export function StoreProvider({ children }) {
     }, 'Tanggal periode diperbarui.'),
 
     submitReport: (args) => run(async () => {
-      const r = await adapter.submitReport(args);
+      let r;
+      try {
+        r = await adapter.submitReport(args);
+      } catch (e) {
+        if (bagian && isExpiredSessionError(e)) dropBagian();
+        throw e;
+      }
       await reloadCycle(args.cycleId);
-      if (adapter.mode === 'supabase' && !isAdmin) return r;
+      if (departmentData[args.departmentId] || bagian?.department.id === args.departmentId) {
+        loadDepartmentData(args.departmentId, true).catch(() => {});
+      }
       return r;
     }),
+
+    // ----- akun bagian -----
+    bagianLogin: (departmentId, password, remember = true) => run(async () => {
+      const s = await adapter.departmentLogin(departmentId, password);
+      saveBagianSession(s, remember);
+      setBagian(s);
+      setDepartmentData((m) => {
+        const next = { ...m };
+        delete next[departmentId];
+        return next;
+      });
+      return s;
+    }, null),
+    bagianLogout: () => run(async () => {
+      const token = bagian?.token;
+      const id = bagian?.department.id;
+      dropBagian();
+      if (id) setDepartmentData((m) => {
+        const next = { ...m };
+        delete next[id];
+        return next;
+      });
+      if (token) await adapter.departmentLogout(token).catch(() => {});
+    }, 'Anda telah keluar dari akun bagian.'),
+    bagianChangePassword: (current, next) => run(async () => {
+      try {
+        await adapter.departmentChangePassword(bagian?.token, current, next);
+      } catch (e) {
+        if (isExpiredSessionError(e)) dropBagian();
+        throw e;
+      }
+    }, 'Sandi bagian diganti. Perangkat lain yang memakai akun ini perlu masuk ulang, dan kode akses formulir ikut berganti.'),
+    loadDepartmentData,
+    setDashboardDeptId,
+    previousPrograms: (args) => adapter.previousPrograms(args),
+    setReportFeedback: (report, catatan) => run(async () => {
+      await adapter.setReportFeedback(report.id, catatan);
+      await loadDepartmentData(report.department_id, true);
+    }, catatan.trim() ? 'Catatan untuk bagian tersimpan.' : 'Catatan dihapus.'),
     setStage: (report, key, on) => run(async () => {
       await adapter.setStage(report.id, key, on);
       setReportsByCycle((m) => ({
@@ -293,6 +369,7 @@ export function StoreProvider({ children }) {
 
   const value = {
     phase, loadError, toast, today, mode: adapter?.mode || 'demo', session, isAdmin,
+    bagian, departmentData, dashboardDeptId,
     periods: base.periods, cycles, departments, activeDepartments,
     activeCycle, viewCycle, prevCycle, period, activePeriod, prevOf,
     reports, prevReports, reportByDept, prevReportByDept, targetsByDept, reportsByCycle, queue, week,

@@ -286,8 +286,36 @@ export function createDemoState(today) {
     reports.push(makeReport({ cycle, dept: d, rand, submitted, submittedIso: iso, stages }));
   }
 
+  // Evaluasi program bulan lalu (laporan bulan ini) & catatan admin (bulan lalu).
+  const STATUS = ['terlaksana', 'terlaksana', 'sebagian', 'terlaksana', 'belum'];
+  const CATATAN = [
+    'Program unggulan berjalan baik. Mohon target terukur dicantumkan untuk setiap program bulan depan.',
+    'Hasil usaha sudah inovatif. Kendala sarana mohon dikoordinasikan dengan bagian terkait sebelum rapat bulanan.',
+    'Laporan rapi. Pertahankan dokumentasi kegiatan sebagai bukti hasil usaha.',
+  ];
+  const prevByDept = new Map(reports.filter((r) => r.cycle_id === prevCycle.id).map((r) => [r.department_id, r]));
+  for (const r of reports) {
+    const dept = departments.find((d) => d.id === r.department_id);
+    if (r.cycle_id === cycle.id && r.submitted_at) {
+      const before = prevByDept.get(r.department_id);
+      r.evaluasi_program = (before?.programs || []).map((p, i) => ({
+        judul: p.judul,
+        kategori: p.kategori,
+        target: p.target || null,
+        status: STATUS[(dept.no + i) % STATUS.length],
+        catatan: (dept.no + i) % STATUS.length === 2 ? 'Sebagian tertunda karena jadwal bentrok; dilanjutkan bulan ini.' : null,
+      }));
+    } else {
+      r.evaluasi_program = [];
+    }
+    if (r.cycle_id === prevCycle.id && r.submitted_at && dept.no % 4 === 1) {
+      r.catatan_admin = CATATAN[dept.no % CATATAN.length];
+      r.catatan_admin_at = `${addDays(prevCycle.deadline_date, 1)}T09:00:00+07:00`;
+    }
+  }
+
   return {
-    version: 2,
+    version: 3,
     seededFor: today,
     periods,
     cycles: [cycle, prevCycle],

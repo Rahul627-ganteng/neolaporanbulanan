@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle2, Key, Plus, Send, Sparkles, Trash2 } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { AlertTriangle, CheckCircle2, Key, ListChecks, Plus, Send, ShieldCheck, Sparkles, Trash2 } from 'lucide-react';
 import { useStore } from '../lib/store.jsx';
-import { cycleLabel, cycleMonthName, deadlineText, KENDALA_CATEGORIES, nextMonthLabel, PROGRAM_CATEGORIES } from '../lib/constants.js';
+import { cycleLabel, cycleMonthName, deadlineText, KENDALA_CATEGORIES, nextMonthLabel, PROGRAM_CATEGORIES, programCategory } from '../lib/constants.js';
+import { EVAL_STATUS } from '../lib/evaluasi.js';
 import { formatTimestamp } from '../lib/hijri.js';
 import { routineHits, toPayload, validateReport } from '../lib/validation.js';
 import { Button, Callout, cx, Field, Input, Panel, Select, Textarea } from './ui.jsx';
@@ -19,6 +20,7 @@ const emptyForm = (cycleId = '') => ({
   solusi: [''],
   programs: [{ judul: '', kategori: 'unggulan', target: '' }],
   pernyataan_inovatif: false,
+  evaluasi: [],
 });
 
 const SAMPLE = {
@@ -79,7 +81,11 @@ function StringList({ idPrefix, items, onChange, placeholder, renderExtra, addLa
 }
 
 export default function ReportForm({ go }) {
-  const { cycles, activeCycle, prevCycle, viewCycle, activeDepartments, departments, reportsByCycle, isAdmin, mode, today, week, actions, loadReports } = useStore();
+  const { cycles, activeCycle, prevCycle, viewCycle, activeDepartments, departments, reportsByCycle, isAdmin, mode, today, week, actions, loadReports, bagian, departmentData } = useStore();
+  // Masuk sebagai bagian: bagian terkunci, kode akses diganti token sesi.
+  const asBagian = Boolean(bagian) && !isAdmin;
+  const ownId = asBagian ? bagian.department.id : null;
+  const ownData = ownId ? departmentData[ownId] : null;
 
   // Sama dengan aturan submit_report: sekretaris boleh mengirim untuk siklus aktif
   // dan satu siklus sebelumnya (lewat tenggat tercatat terlambat). Admin: semua.
@@ -106,7 +112,11 @@ export default function ReportForm({ go }) {
   const cycle = cycles.find((c) => c.id === form.cycle_id) || activeCycle;
   const dept = departments.find((d) => d.id === form.department_id);
   const existing = cycle && form.department_id ? (reportsByCycle[cycle.id] || []).find((r) => r.department_id === form.department_id) : null;
-  const requireCode = mode === 'supabase' && !isAdmin;
+  const requireCode = mode === 'supabase' && !isAdmin && !asBagian;
+  const fullReport = (deptId, cycleId) =>
+    departmentData[deptId]?.reports?.find((r) => r.cycle_id === cycleId) ||
+    (reportsByCycle[cycleId] || []).find((r) => r.department_id === deptId) ||
+    null;
 
   useEffect(() => {
     if (cycle) loadReports(cycle.id);
@@ -120,8 +130,8 @@ export default function ReportForm({ go }) {
   };
 
   const pickDepartment = (id) => {
-    const d = departments.find((x) => x.id === id);
-    const rep = cycle ? (reportsByCycle[cycle.id] || []).find((r) => r.department_id === id) : null;
+    const d = { ...departments.find((x) => x.id === id), ...(departmentData[id]?.department || {}) };
+    const rep = cycle ? fullReport(id, cycle.id) : null;
     if (rep?.submitted_at && rep.hasil_usaha?.length) {
       patch({
         department_id: id,
@@ -133,6 +143,7 @@ export default function ReportForm({ go }) {
         solusi: rep.solusi?.length ? [...rep.solusi] : [''],
         programs: rep.programs?.length ? rep.programs.map((p) => ({ judul: p.judul, kategori: p.kategori, target: p.target || '' })) : [{ judul: '', kategori: 'unggulan', target: '' }],
         pernyataan_inovatif: false,
+        evaluasi: [],
       });
     } else {
       patch({
@@ -140,8 +151,68 @@ export default function ReportForm({ go }) {
         sekretaris_nama: d?.sekretaris_nama || '',
         ketua_nama: d?.ketua_nama || '',
         pembimbing_nama: d?.pembimbing_nama || '',
+        evaluasi: [],
       });
     }
+  };
+
+  useEffect(() => {
+    if (ownId) actions.loadDepartmentData(ownId).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ownId]);
+
+  // Bagian yang masuk: formulir otomatis memakai bagiannya (dan isi laporannya bila sudah ada).
+  const autoPick = useRef('');
+  useEffect(() => {
+    if (!ownId || !cycle) return;
+    const key = `${cycle.id}:${ownData ? 1 : 0}`;
+    const pristine = form.hasil_usaha.every((h) => !h.trim()) && form.programs.every((p) => !p.judul.trim());
+    if (form.department_id === ownId && (autoPick.current === key || !pristine)) return;
+    autoPick.current = key;
+    pickDepartment(ownId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ownId, cycle?.id, ownData, form.department_id]);
+
+  // Program kerja bulan lalu untuk dievaluasi (admin, sesi bagian, atau kode akses yang benar).
+  const [evalHint, setEvalHint] = useState('');
+  const secret = isAdmin ? null : asBagian ? bagian.token : form.access_code.trim();
+  useEffect(() => {
+    setEvalHint('');
+    if (!cycle || !form.department_id) return undefined;
+    if (!isAdmin && !asBagian && mode === 'supabase' && (secret || '').length < 6) {
+      setEvalHint('Masukkan kode akses untuk menampilkan program bulan lalu yang perlu dievaluasi.');
+      return undefined;
+    }
+    let off = false;
+    const saved = fullReport(form.department_id, cycle.id)?.evaluasi_program || [];
+    const t = setTimeout(async () => {
+      try {
+        const progs = await actions.previousPrograms({ cycleId: cycle.id, departmentId: form.department_id, secret });
+        if (off) return;
+        setForm((f) => ({
+          ...f,
+          evaluasi: (progs || []).map((p) => {
+            const old = f.evaluasi.find((e) => e.judul === p.judul) || saved.find((e) => e.judul === p.judul);
+            return { judul: p.judul, kategori: p.kategori, target: p.target || '', status: old?.status || '', catatan: old?.catatan || '' };
+          }),
+        }));
+      } catch {
+        if (off) return;
+        setForm((f) => (f.evaluasi.length ? { ...f, evaluasi: [] } : f));
+        if (!isAdmin && !asBagian) setEvalHint('Kode akses belum sesuai, jadi program bulan lalu belum bisa ditampilkan.');
+      }
+    }, isAdmin || asBagian ? 0 : 450);
+    return () => {
+      off = true;
+      clearTimeout(t);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cycle?.id, form.department_id, secret, isAdmin, asBagian, ownData]);
+
+  const setEval = (i, p) => {
+    setForm((f) => ({ ...f, evaluasi: f.evaluasi.map((e, j) => (j === i ? { ...e, ...p } : e)) }));
+    setProblems(null);
+    setConfirmWarn(false);
   };
 
   const submit = async (force = false) => {
@@ -155,7 +226,12 @@ export default function ReportForm({ go }) {
     setBusy(true);
     try {
       const payload = toPayload(form);
-      const saved = await actions.submitReport({ cycleId: cycle.id, departmentId: form.department_id, accessCode: form.access_code.trim().toUpperCase(), payload });
+      const saved = await actions.submitReport({
+        cycleId: cycle.id,
+        departmentId: form.department_id,
+        accessCode: asBagian ? bagian.token : form.access_code.trim().toUpperCase(),
+        payload,
+      });
       const report = { ...saved, ...payload, submitted_at: existing?.submitted_at || saved.submitted_at || new Date().toISOString() };
       setDone({ report, department: dept, cycle, revised: Boolean(existing?.submitted_at), showCard: true });
       setForm(emptyForm(form.cycle_id));
@@ -193,7 +269,7 @@ export default function ReportForm({ go }) {
             </Callout>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field label="Laporan bulan">
-                <Select id="f-cycle" value={form.cycle_id} onChange={(e) => patch({ cycle_id: e.target.value, department_id: '' })}>
+                <Select id="f-cycle" value={form.cycle_id} onChange={(e) => patch({ cycle_id: e.target.value, department_id: '', evaluasi: [] })}>
                   {openCycles.map((c) => (
                     <option key={c.id} value={c.id}>
                       {cycleLabel(c)}
@@ -203,7 +279,7 @@ export default function ReportForm({ go }) {
                 </Select>
               </Field>
               <Field label="Bagian">
-                <Select id="f-dept" value={form.department_id} onChange={(e) => pickDepartment(e.target.value)}>
+                <Select id="f-dept" value={form.department_id} disabled={asBagian} onChange={(e) => pickDepartment(e.target.value)}>
                   <option value="">— Pilih bagian (1–{activeDepartments.length}) —</option>
                   {activeDepartments.map((d) => {
                     const r = (reportsByCycle[cycle.id] || []).find((x) => x.department_id === d.id);
@@ -225,7 +301,14 @@ export default function ReportForm({ go }) {
               <Field label="Pembimbing Bagian">
                 <Input id="f-pemb" value={form.pembimbing_nama} onChange={(e) => patch({ pembimbing_nama: e.target.value })} placeholder="Ust. …" />
               </Field>
-              {requireCode ? (
+              {asBagian ? (
+                <div className="flex items-end">
+                  <p className="flex items-start gap-2 rounded-lg border border-emerald-300/60 bg-emerald-50 px-3 py-2.5 text-[13px] leading-snug text-emerald-900">
+                    <ShieldCheck className="mt-0.5 size-4 shrink-0" aria-hidden />
+                    <span>Masuk sebagai <strong>{bagian.department.nama}</strong>. Kode akses tidak perlu diisi.</span>
+                  </p>
+                </div>
+              ) : requireCode ? (
                 <Field label="Kode akses bagian" hint="Diberikan admin kepada Sekretaris Bagian.">
                   <Input
                     id="f-code"
@@ -266,6 +349,51 @@ export default function ReportForm({ go }) {
               <Callout tone="info" title="Bagian ini sudah melapor">
                 Softfile masuk {formatTimestamp(existing.submitted_at)}. Mengirim ulang akan memperbarui isi laporan; waktu kirim pertama tetap dicatat untuk penilaian ketepatan waktu.
               </Callout>
+            )}
+
+            {(form.evaluasi.length > 0 || evalHint) && (
+              <section className="flex flex-col gap-3">
+                <SectionTitle n={<ListChecks className="inline size-4" aria-hidden />} title={`Evaluasi Program Kerja · ${cycleMonthName(cycle)} ${cycle.hijri_year} H`}>
+                  Program yang direncanakan untuk {cycleMonthName(cycle)} pada laporan bulan lalu. Tandai keterlaksanaannya. Evaluasi tampil di dasbor bagian dan tidak mengubah berkas Word resmi.
+                </SectionTitle>
+                {form.evaluasi.length === 0 ? (
+                  <p className="text-[13px] text-muted sm:pl-7">{evalHint}</p>
+                ) : (
+                  <div className="flex flex-col gap-2.5 sm:pl-7">
+                    {form.evaluasi.map((e, i) => (
+                      <div key={`${e.judul}-${i}`} className="flex flex-col gap-2.5 rounded-xl border border-line p-3.5">
+                        <p className="text-[14px] font-semibold leading-snug text-ink">
+                          <span aria-hidden>{programCategory(e.kategori)?.emoji}</span> {e.judul}
+                          {e.target ? <span className="font-normal text-muted"> · target {e.target}</span> : null}
+                        </p>
+                        <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label={`Keterlaksanaan ${e.judul}`}>
+                          {EVAL_STATUS.map((st) => (
+                            <button
+                              key={st.key}
+                              type="button"
+                              role="radio"
+                              aria-checked={e.status === st.key}
+                              onClick={() => setEval(i, { status: st.key })}
+                              className={cx(
+                                'inline-flex h-8 items-center rounded-full border px-3 text-[12.5px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-brand',
+                                e.status === st.key ? st.on : 'border-line bg-white text-muted hover:text-ink'
+                              )}
+                            >
+                              {st.label}
+                            </button>
+                          ))}
+                        </div>
+                        <Input
+                          id={`eval-catatan-${i}`}
+                          value={e.catatan}
+                          placeholder="Catatan singkat (opsional), mis. alasan tertunda"
+                          onChange={(ev) => setEval(i, { catatan: ev.target.value })}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
             )}
 
             <section className="flex flex-col gap-3">

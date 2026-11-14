@@ -28,6 +28,7 @@ supabase/
     20261104010601_departments_admin_only_read.sql  nama & WA pejabat bagian hanya untuk admin
     20261114000001_otomasi_periode_kode_admin.sql   buka periode otomatis, kode akses massal, kelola admin
     20261114064000_revoke_rls_auto_enable.sql       fungsi event trigger bawaan tidak bisa dipanggil lewat RPC
+    20261114120000_akun_bagian_evaluasi.sql         akun & dasbor bagian, evaluasi program, catatan admin
   functions/
     _shared/rundown.js              aturan rundown & template WA (dipakai frontend + Edge Function)
     _shared/hijri.js                kalender Hijriah (Umm al-Qura) & rencana pembukaan periode
@@ -47,6 +48,8 @@ scripts/build-artifact.mjs          membangun prototipe single-file dari kode ya
 - `priority_programs` — Program Kerja Satu Bulan ke Depan + klasifikator 🌟 Unggulan / 🚀 Inovasi / 🛠️ Tindak Lanjut / 📌 Reguler.
 - `notification_queue` — antrean pengingat WA (diisi pg_cron atau admin, dikirim manual).
 - `app_admins` — akun Supabase Auth yang berhak mengelola; diisi otomatis dari `app_admin_emails`.
+- `department_sessions` — sesi akun bagian (hash SHA-256 token acak, berlaku 30 hari); `department_login_failures` — percobaan sandi salah (dikunci 15 menit setelah 10 kali).
+- `monthly_reports.evaluasi_program` — penilaian program kerja bulan lalu (terlaksana / sebagian / belum + catatan); `catatan_admin` — tanggapan Sektor Guru KMI yang tampil di dasbor bagian.
 
 ---
 
@@ -107,10 +110,18 @@ Admin berikutnya ditambahkan dari aplikasi (**Periode & Admin → Akun admin**):
 ### 5. Mulai pakai
 1. **Data Bagian → Impor dari spreadsheet**: unduh templat 48 bagian, isi nama & WA Ketua/Sekretaris dan Pembimbing, tempel/unggah kembali.
 2. **Data Bagian → Kode akses massal**: buat kode 6 karakter untuk semua bagian, unduh Excel-nya, kirim ke tiap Sekretaris lewat tombol WA.
-3. Sekretaris membuka portal → **Input Laporan** → pilih bagian → isi kode akses → kirim.
+3. Sekretaris membuka portal → **Masuk** → tab **Bagian** → pilih bagian → sandi (= kode akses) → **Dasbor Bagian**. Dari sana **Isi laporan**: bagian terkunci, kode tidak diminta lagi, dan program bulan lalu muncul untuk dievaluasi. Tanpa masuk pun tetap bisa: **Input Laporan** → pilih bagian → kode akses → kirim.
 4. Periode bulan berikutnya dibuka otomatis sehari setelah tenggat tanggal 5 (tanggal Umm al-Qura; admin dapat menyesuaikan di **Periode & Admin** bila penetapan pondok berbeda).
 
 ---
+
+## Akun & dasbor bagian
+- **Satu rahasia per bagian.** Kode akses dari admin = sandi awal akun bagian. Bagian dapat menggantinya di dasbor (min. 8 karakter); sandi baru otomatis juga menjadi kode formulir tanpa masuk. Huruf besar/kecil tidak dibedakan.
+- **Bukan Supabase Auth.** `department_login` memeriksa hash bcrypt di `departments`, lalu memberi token acak 30 hari (yang disimpan hanya hash-nya). Tidak perlu email, tidak terkena batas login Auth walau 48 bagian memakai Wi-Fi pondok yang sama.
+- **Dasbor bagian** (`department_dashboard`): headline rundown minggu berjalan & tenggat, tahapan laporan bulan ini, statistik (terkirim, tepat waktu, keterlaksanaan program, unggulan & inovasi), program kerja terbaru, kendala yang berulang ≥ 2 bulan, program yang belum terlaksana, grafik program per klasifikasi, riwayat lengkap per bulan + unduh Word resmi, dan ganti sandi.
+- **Admin**: menu **Dasbor Bagian** (atau tombol **Dasbor** di Data Bagian) membuka dasbor bagian mana pun dan menulis **catatan** per laporan (`set_report_feedback`), yang tampil di dasbor bagian.
+- **Pencabutan sesi**: admin mengatur ulang kode (per bagian atau "semua bagian") → bagian itu keluar dari semua perangkat. Bagian mengganti sandi → perangkat lain keluar.
+- **Lupa sandi**: admin mengatur kode baru di **Data Bagian → Ubah** lalu mengirimkannya ke Sekretaris.
 
 ## Otomatisasi pengingat (pg_cron + Edge Function)
 - Setiap hari 06.05 WIB, `cron.schedule('kmi-weekly-reminder')` memanggil `public.trigger_weekly_reminder()` → `net.http_post` ke Edge Function dengan secret `cron_secret` dari Vault. Edge Function mencocokkan token itu langsung ke Vault (`check_cron_secret`), jadi `CRON_SECRET` di env fungsi bersifat opsional.
@@ -130,7 +141,8 @@ Admin berikutnya ditambahkan dari aplikasi (**Periode & Admin → Akun admin**):
 
 ## Keamanan
 - RLS aktif di semua tabel. Publik hanya membaca nama bagian, tahun ajaran, dan siklus; isi laporan & nomor WA hanya untuk admin.
-- Sekretaris mengirim laporan lewat RPC `submit_report` dengan kode akses bagian (bcrypt, tidak peka huruf besar/kecil). Sekretaris dapat mengirim untuk siklus aktif dan satu siklus sebelumnya; yang lebih lama hanya lewat admin.
+- Sekretaris mengirim laporan lewat RPC `submit_report` dengan kode akses bagian (bcrypt, tidak peka huruf besar/kecil) atau token sesi akun bagian. Sekretaris dapat mengirim untuk siklus aktif dan satu siklus sebelumnya; yang lebih lama hanya lewat admin.
+- Akun bagian hanya membaca laporan bagiannya sendiri lewat RPC; tabel sesi tidak dapat dibaca langsung oleh siapa pun selain fungsi database.
 - Admin tidak dapat mencabut hak adminnya sendiri, dan daftar admin tidak boleh kosong.
 - `service_role` key hanya dipakai di Edge Function (otomatis dari Supabase), tidak pernah di frontend atau Netlify.
 
