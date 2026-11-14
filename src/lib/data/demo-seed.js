@@ -19,12 +19,12 @@ const FIRST = ['Ahmad', 'Muhammad', 'Abdullah', 'Hasan', 'Fathurrahman', 'Ilham'
 const LAST = ['Fauzi', 'Rizki', 'Hanif', 'Basri', 'Rahman', 'Maulana', 'Abidin', 'Hidayat', 'Ramadhan', 'Hakim', 'Kholis', 'Arifin', 'Habibi', 'Anwar', 'Fahmi', 'Mubarok', 'Zuhdi', 'Nawawi', 'Syarif', 'Mahfud'];
 
 const CLUSTER = {
-  pendidikan: [1, 2, 3, 4, 5, 6, 7, 8, 9, 13, 19],
-  layanan: [10, 11, 12, 15, 21, 22, 44],
-  media: [16, 18, 23, 24, 45],
-  pembinaan: [14, 17, 20, 25, 26, 27, 46, 47],
-  yayasan: [28, 29, 30, 31],
-  usaha: [32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 48],
+  pendidikan: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 14, 20],
+  layanan: [11, 12, 13, 16, 22, 23, 45],
+  media: [17, 19, 24, 25, 46],
+  pembinaan: [15, 18, 21, 26, 27, 28, 47, 48],
+  yayasan: [29, 30, 31, 32],
+  usaha: [33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 49],
 };
 const clusterOf = (no) => Object.keys(CLUSTER).find((k) => CLUSTER[k].includes(no)) || 'usaha';
 
@@ -315,7 +315,7 @@ export function createDemoState(today) {
   }
 
   return {
-    version: 3,
+    version: 4,
     seededFor: today,
     periods,
     cycles: [cycle, prevCycle],

@@ -4,6 +4,7 @@ import { useStore } from '../lib/store.jsx';
 import { normalizeWa } from '../lib/constants.js';
 import { Button, Callout, Field, Input, Modal } from './ui.jsx';
 import NameCombobox from './NameCombobox.jsx';
+import PembimbingField from './PembimbingField.jsx';
 
 const waOk = (v) => !v || /^62\d{8,13}$/.test(normalizeWa(v));
 const toLocal = (wa) => (wa ? `0${String(wa).replace(/^62/, '')}` : '');
@@ -14,7 +15,7 @@ const toLocal = (wa) => (wa ? `0${String(wa).replace(/^62/, '')}` : '');
  * (saat masuk dengan kode awal bersama) kode akses milik bagian sendiri.
  */
 export default function BagianSetup({ open, mode = 'first', onClose }) {
-  const { bagian, teachers, actions } = useStore();
+  const { bagian, teachers, pembimbingOptions, actions } = useStore();
   const first = mode === 'first';
   const mustCode = first && Boolean(bagian?.kode_bersama);
   const [f, setF] = useState({ ketua_nama: '', ketua_wa: '', sekretaris_nama: '', sekretaris_wa: '', pembimbing_nama: '', kode: '', ulang: '' });
@@ -107,7 +108,7 @@ export default function BagianSetup({ open, mode = 'first', onClose }) {
             <Input id="setup-sek-wa" inputMode="tel" autoComplete="tel" value={f.sekretaris_wa} onChange={set('sekretaris_wa')} />
           </Field>
           <Field label="Nama Pembimbing Bagian" className="sm:col-span-2">
-            <Input id="setup-pemb" value={f.pembimbing_nama} onChange={set('pembimbing_nama')} placeholder="Nama Pembimbing Bagian" />
+            <PembimbingField id="setup-pemb" value={f.pembimbing_nama} onChange={set('pembimbing_nama')} options={pembimbingOptions || []} />
           </Field>
         </div>
 

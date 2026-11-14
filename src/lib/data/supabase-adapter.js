@@ -261,6 +261,9 @@ export function createSupabaseAdapter() {
     async formContext({ departmentId, secret } = {}) {
       return must(await sb.rpc('form_context', { p_department_id: departmentId || null, p_secret: secret || null }));
     },
+    async setPembimbingOptions(list) {
+      return must(await sb.rpc('set_pembimbing_options', { p_list: list }));
+    },
     async replaceTeachers(rows) {
       return must(await sb.rpc('replace_teachers', { p_rows: rows }));
     },

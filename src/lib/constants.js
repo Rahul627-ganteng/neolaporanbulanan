@@ -2,11 +2,12 @@
 // supabase/functions/_shared/rundown.js (dipakai juga oleh Edge Function).
 export * from '../../supabase/functions/_shared/rundown.js';
 
-/** 48 bagian resmi Sektor Guru KMI PMDG Kampus 3 (urutan = nomor bagian). */
+/** Bagian resmi Sektor Guru KMI PMDG Kampus 3 (urutan = nomor bagian). */
 export const DEPARTMENT_NAMES = [
   "Bagian Pengasuhan Santri",
   "Bagian Kulliyatu-l-Mu'allimin Al-Islamiyyah",
   "Bagian Labolatorium KMI",
+  "Sekretaris Wakil Pengasuh",
   "Bagian Administrasi",
   "Language Advisory Council",
   "Public Speaking & Discussion Advisory Council",

@@ -310,7 +310,7 @@ export function ImportDepartmentsModal({ open, onClose }) {
       const blob = await buildXlsx([
         {
           name: 'Data Bagian',
-          title: ['DATA PEJABAT 48 BAGIAN SEKTOR GURU KMI — isi lalu unggah/tempel kembali ke portal'],
+          title: [`DATA PEJABAT ${sorted.length} BAGIAN SEKTOR GURU KMI — isi lalu unggah/tempel kembali ke portal`],
           header: COLS.map((c) => c.label),
           rows: sorted.map((d) => [d.no, d.nama, d.ketua_nama || '', d.ketua_wa ? `0${d.ketua_wa.slice(2)}` : '', d.sekretaris_nama || '', d.sekretaris_wa ? `0${d.sekretaris_wa.slice(2)}` : '', d.pembimbing_nama || '']),
           widths: [6, 44, 28, 18, 28, 18, 28],
@@ -368,7 +368,7 @@ export function ImportDepartmentsModal({ open, onClose }) {
       <div className="flex flex-col gap-4">
         <ol className="flex list-decimal flex-col gap-1.5 pl-5 text-[13.5px] leading-relaxed text-ink">
           <li>
-            Unduh templat berisi 48 bagian, isi nama dan nomor WA di Excel atau Google Sheets.{' '}
+            Unduh templat berisi {sorted.length} bagian, isi nama dan nomor WA di Excel atau Google Sheets.{' '}
             <Button size="sm" icon={Download} busy={busy === 'tpl'} onClick={template} className="ml-1 align-middle">
               Unduh templat
             </Button>

@@ -264,7 +264,7 @@ export default function App() {
           <Empty icon={CalendarRange} title="Belum ada periode bulan yang dibuka">
             {isAdmin ? (
               <>
-                Lengkapi Data Bagian (nama, nomor WA, kode akses), lalu buka periode bulan Hijriah pertama agar 48 bagian bisa mulai melapor.
+                Lengkapi Data Bagian (nama, nomor WA, kode akses), lalu buka periode bulan Hijriah pertama agar semua bagian bisa mulai melapor.
                 <div className="mt-4 flex flex-wrap justify-center gap-2">
                   <Button variant="primary" icon={RefreshCw} onClick={() => setCycleOpen(true)}>
                     Buka Periode Bulan

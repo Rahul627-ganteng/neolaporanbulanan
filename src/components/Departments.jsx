@@ -1,15 +1,69 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Building2, Eye, EyeOff, FileSpreadsheet, GraduationCap, Key, Megaphone, Pencil, Plus, Search, Shuffle, Users } from 'lucide-react';
+import { Building2, Eye, EyeOff, FileSpreadsheet, GraduationCap, Key, Megaphone, Pencil, Plus, Search, Shuffle, UserCheck, Users } from 'lucide-react';
 import { useStore } from '../lib/store.jsx';
 import { formatWa, normalizeWa } from '../lib/constants.js';
-import { Badge, Button, Callout, Empty, Field, Input, Modal, Panel } from './ui.jsx';
+import { Badge, Button, Callout, Empty, Field, Input, Modal, Panel, Textarea } from './ui.jsx';
 import { AccessCodesModal, ImportDepartmentsModal, ImportTeachersModal } from './DepartmentTools.jsx';
 import NameCombobox from './NameCombobox.jsx';
+import PembimbingField from './PembimbingField.jsx';
 import { copyText } from '../lib/files.js';
 import { PORTAL_URL } from '../lib/env.js';
 
 const ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const randomCode = () => Array.from(crypto.getRandomValues(new Uint8Array(6)), (b) => ALPHABET[b % ALPHABET.length]).join('');
+
+function PembimbingCard() {
+  const { actions, pembimbingOptions } = useStore();
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const list = pembimbingOptions || [];
+  const save = async () => {
+    setBusy(true);
+    try {
+      await actions.setPembimbingOptions(text.split(/\r?\n/).map((s) => s.trim()).filter(Boolean));
+      setEditing(false);
+    } catch {
+      /* toast tampil */
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="flex flex-col gap-3 rounded-[14px] border border-line bg-white px-5 py-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-start gap-3">
+          <UserCheck className="mt-0.5 size-5 shrink-0 text-brand" aria-hidden />
+          <div className="min-w-0">
+            <p className="text-[14px] font-semibold text-ink">
+              Daftar Pembimbing Bagian: {pembimbingOptions === null ? 'memuat…' : `${list.length} nama`}
+            </p>
+            <p className="text-[12.5px] text-muted">Muncul sebagai pilihan saat login pertama, di formulir laporan, dan di Data Bagian. Selalu ada opsi "Lainnya".</p>
+          </div>
+        </div>
+        <Button size="sm" icon={Pencil} onClick={() => { setText(list.join('\n')); setEditing((v) => !v); }}>
+          Ubah daftar
+        </Button>
+      </div>
+      {editing && (
+        <div className="flex flex-col gap-2 border-t border-line pt-3">
+          <Field label="Satu nama per baris">
+            <Textarea id="pembimbing-list" rows={8} value={text} onChange={(e) => setText(e.target.value)} placeholder={'Al-Ustadz …\nAl-Ustadz …'} />
+          </Field>
+          <div className="flex gap-2">
+            <Button variant="primary" busy={busy} onClick={save}>Simpan daftar</Button>
+            <Button variant="ghost" onClick={() => setEditing(false)}>Batal</Button>
+          </div>
+        </div>
+      )}
+      {!editing && list.length > 0 && (
+        <ul className="flex flex-wrap gap-1.5">
+          {list.map((n) => <li key={n}><Badge tone="brand">{n}</Badge></li>)}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 function SharedCodeCard({ access, onSaved }) {
   const { actions } = useStore();
@@ -86,7 +140,7 @@ function SharedCodeCard({ access, onSaved }) {
 }
 
 function EditModal({ dept, onClose }) {
-  const { actions, mode, teachers } = useStore();
+  const { actions, mode, teachers, pembimbingOptions } = useStore();
   const [d, setD] = useState(dept);
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
@@ -138,7 +192,9 @@ function EditModal({ dept, onClose }) {
         <Field label="WA Sekretaris" hint={waBad(d.sekretaris_wa) ? 'Format tidak valid' : d.sekretaris_wa ? `Disimpan sebagai ${normalizeWa(d.sekretaris_wa)}` : 'Contoh 0812xxxxxxx'}>
           <Input id="d-sek-wa" inputMode="tel" value={d.sekretaris_wa || ''} onChange={set('sekretaris_wa')} />
         </Field>
-        <Field label="Nama Pembimbing Bagian" className="sm:col-span-2"><Input id="d-pemb" value={d.pembimbing_nama || ''} onChange={set('pembimbing_nama')} placeholder="Ust. …" /></Field>
+        <Field label="Nama Pembimbing Bagian" className="sm:col-span-2">
+          <PembimbingField id="d-pemb" value={d.pembimbing_nama || ''} onChange={(v) => setD((x) => ({ ...x, pembimbing_nama: v }))} options={pembimbingOptions || []} />
+        </Field>
         {dept.id && (
           <Field
             label={dept.has_access_code ? 'Atur ulang kode akses / sandi akun bagian' : 'Atur kode akses / sandi akun bagian'}
@@ -158,7 +214,7 @@ function EditModal({ dept, onClose }) {
 }
 
 export default function Departments({ go }) {
-  const { departments, mode, actions, teachers } = useStore();
+  const { departments, mode, actions, teachers, pembimbingOptions } = useStore();
   const [teachersOpen, setTeachersOpen] = useState(false);
   const [access, setAccess] = useState(null);
   const [reveal, setReveal] = useState(false);
@@ -169,7 +225,7 @@ export default function Departments({ go }) {
   }, [departments]);
   const codeOf = useMemo(() => new Map((access?.codes || []).map((c) => [c.department_id, c])), [access]);
   useEffect(() => {
-    if (teachers === null) actions.loadFormContext({}).catch(() => {});
+    if (teachers === null || pembimbingOptions === null) actions.loadFormContext({}).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const [q, setQ] = useState('');
@@ -211,6 +267,7 @@ export default function Departments({ go }) {
         </Callout>
       )}
       <SharedCodeCard access={access} onSaved={loadAccess} />
+      <PembimbingCard />
       <div className="flex flex-col gap-3 rounded-[14px] border border-line bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-start gap-3">
           <GraduationCap className="mt-0.5 size-5 shrink-0 text-brand" aria-hidden />

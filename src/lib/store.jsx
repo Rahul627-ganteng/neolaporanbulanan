@@ -16,6 +16,7 @@ export function StoreProvider({ children }) {
   const [dashboardDeptId, setDashboardDeptId] = useState(null);
   // Direktori guru (nama Ketua/Sekretaris); dibuka setelah kode/sesi/admin terverifikasi.
   const [teachers, setTeachers] = useState(null);
+  const [pembimbingOptions, setPembimbingOptions] = useState(null);
   const [base, setBase] = useState({ periods: [], cycles: [], departments: [] });
   const [viewCycleId, setViewCycleId] = useState(null);
   const [reportsByCycle, setReportsByCycle] = useState({});
@@ -248,7 +249,7 @@ export function StoreProvider({ children }) {
       await reloadCycle(id);
       setQueue([]);
       return id;
-    }, 'Periode bulan baru dibuka. Status 48 bagian telah direset dan bulan sebelumnya diarsipkan.'),
+    }, 'Periode bulan baru dibuka. Status semua bagian telah direset dan bulan sebelumnya diarsipkan.'),
     setCycleWeek: (cycleId, w) => run(async () => {
       await adapter.updateCycle(cycleId, { active_week: w });
       await refreshBase();
@@ -326,8 +327,14 @@ export function StoreProvider({ children }) {
     loadFormContext: async (args = {}) => {
       const ctx = await adapter.formContext(args);
       if (Array.isArray(ctx?.teachers)) setTeachers(ctx.teachers);
+      if (Array.isArray(ctx?.pembimbing)) setPembimbingOptions(ctx.pembimbing);
       return ctx;
     },
+    setPembimbingOptions: (list) => run(async () => {
+      const saved = await adapter.setPembimbingOptions(list);
+      setPembimbingOptions(saved || list);
+      return saved;
+    }, 'Daftar Pembimbing Bagian disimpan.'),
     replaceTeachers: (rows) => run(async () => {
       const out = await adapter.replaceTeachers(rows);
       const ctx = await adapter.formContext({});
@@ -401,7 +408,7 @@ export function StoreProvider({ children }) {
 
   const value = {
     phase, loadError, toast, today, mode: adapter?.mode || 'demo', session, isAdmin,
-    bagian, departmentData, dashboardDeptId, teachers,
+    bagian, departmentData, dashboardDeptId, teachers, pembimbingOptions,
     // Login pertama: kode bersama belum diganti, atau kontak bagian belum dilengkapi.
     needsSetup: Boolean(
       bagian &&

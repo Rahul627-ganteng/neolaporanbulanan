@@ -7,7 +7,7 @@ import { Button, cx, Empty, Panel } from './ui.jsx';
 
 const STEPS = [
   { icon: GitBranch, title: 'Push ke GitHub', body: 'Unggah repositori ini ke GitHub dan isi Secrets: SUPABASE_ACCESS_TOKEN, SUPABASE_PROJECT_REF, SUPABASE_DB_PASSWORD, VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY, CRON_SECRET, NETLIFY_AUTH_TOKEN, NETLIFY_SITE_ID.' },
-  { icon: Database, title: 'Migrasi Supabase otomatis', body: 'GitHub Actions menjalankan supabase db push (skema, seed 48 bagian, pg_cron), men-deploy Edge Function weekly-reminder, dan menyetel secret CRON_SECRET.' },
+  { icon: Database, title: 'Migrasi Supabase otomatis', body: 'GitHub Actions menjalankan supabase db push (skema, seed data bagian, pg_cron), men-deploy Edge Function weekly-reminder, dan menyetel secret CRON_SECRET.' },
   { icon: Globe, title: 'Live di Netlify', body: 'Build Vite diuji di CI lalu dirilis ke Netlify memakai netlify.toml (SPA redirect, header keamanan, cache aset).' },
 ];
 

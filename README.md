@@ -1,7 +1,7 @@
 # Portal Laporan Bulanan Sektor Guru KMI
 **Pondok Modern Darussalam Gontor Kampus 3 (Darul Ma'rifat) · Sumbercangkring, Gurah, Kediri**
 
-Sistem informasi pelaporan bulanan untuk 48 bagian Sektor Guru KMI: formulir softfile resmi, pelacak Rundown 4 minggu, pengingat WhatsApp dengan konfirmasi admin, kartu pengingat target program, dokumen Word resmi, daftar belum lapor, dan panel admin bergrafik. Satu kode sumber berjalan dalam dua mode:
+Sistem informasi pelaporan bulanan untuk 49 bagian Sektor Guru KMI: formulir softfile resmi, pelacak Rundown 4 minggu, pengingat WhatsApp dengan konfirmasi admin, kartu pengingat target program, dokumen Word resmi, daftar belum lapor, dan panel admin bergrafik. Satu kode sumber berjalan dalam dua mode:
 
 **Alur laporan.** Laporan bulan M berisi *hasil usaha selama bulan M* dan *program kerja bulan M+1*. Laporan dikerjakan di akhir bulan M (Minggu 3–4) dan dikumpulkan paling lambat **tanggal 5 bulan M+1**. Siklus M tetap aktif sampai tenggat itu; sehari setelahnya Edge Function membuka siklus M+1 otomatis. Laporan M yang terlambat tetap diterima dan ditandai *terlambat*.
 
@@ -31,6 +31,7 @@ supabase/
     20261114120000_akun_bagian_evaluasi.sql         akun & dasbor bagian, evaluasi program, catatan admin
     20261114130000_direktori_guru.sql               daftar guru (tanpa data di repo) & pejabat bagian diingat
     20261114140000_kode_awal_profil_bagian.sql      kode awal bersama, login pertama, kode tercatat untuk admin
+    20261114150000_sekwapeng_pembimbing.sql         bagian Sekretaris Wakil Pengasuh (no. 4) & daftar Pembimbing
   functions/
     _shared/rundown.js              aturan rundown & template WA (dipakai frontend + Edge Function)
     _shared/hijri.js                kalender Hijriah (Umm al-Qura) & rencana pembukaan periode
@@ -45,14 +46,14 @@ scripts/build-artifact.mjs          membangun prototipe single-file dari kode ya
 ### Tabel utama
 - `academic_periods` — tahun ajaran lintas periode (dibuat otomatis tiap Syawal, atau manual dari menu **Periode & Admin**).
 - `monthly_cycles` — satu bulan Hijriah = satu siklus; `deadline_date` = tanggal 5 bulan berikutnya; `active_week` opsional (manual).
-- `departments` — 48 bagian + nama & WA Ketua/Sekretaris, nama Pembimbing, hash kode akses.
+- `departments` — 49 bagian (Sekretaris Wakil Pengasuh = nomor 4 sejak migrasi 12) + nama & WA Ketua/Sekretaris, nama Pembimbing, hash kode akses.
 - `monthly_reports` — Hasil Usaha, Kendala (berkategori), Solusi, status, dan cap waktu tahapan rundown (rapat bagian, draf ke Guru Senior, persetujuan Pembimbing, softfile, hardfile Staf Sekretaris Wakil Pengasuh).
 - `priority_programs` — Program Kerja Satu Bulan ke Depan + klasifikator 🌟 Unggulan / 🚀 Inovasi / 🛠️ Tindak Lanjut / 📌 Reguler.
 - `notification_queue` — antrean pengingat WA (diisi pg_cron atau admin, dikirim manual).
 - `app_admins` — akun Supabase Auth yang berhak mengelola; diisi otomatis dari `app_admin_emails`.
 - `department_sessions` — sesi akun bagian (hash SHA-256 token acak, berlaku 30 hari); `department_login_failures` — percobaan sandi salah (dikunci 15 menit setelah 10 kali).
 - `teachers` — daftar guru KMI tanpa Guru Senior, untuk mencari nama Ketua & Sekretaris. **Datanya tidak ada di repo (repo publik)**: dimuat admin dari Excel absen guru (Data Bagian → Perbarui dari Excel).
-- `portal_settings` — kode awal bersama (teks & hash); `department_codes` — kode tiap bagian yang tercatat untuk admin (dari admin atau buatan bagian). Keduanya hanya bisa dibaca admin.
+- `portal_settings` — kode awal bersama (teks & hash) dan daftar Pembimbing Bagian (`pembimbing`, diisi admin; tidak di repo); `department_codes` — kode tiap bagian yang tercatat untuk admin (dari admin atau buatan bagian). Keduanya hanya bisa dibaca admin.
 - `monthly_reports.evaluasi_program` — penilaian program kerja bulan lalu (terlaksana / sebagian / belum + catatan); `catatan_admin` — tanggapan Sektor Guru KMI yang tampil di dasbor bagian.
 
 ---
@@ -112,7 +113,7 @@ on conflict (email) do nothing;
 Admin berikutnya ditambahkan dari aplikasi (**Periode & Admin → Akun admin**): akun dibuat otomatis dengan kata sandi sementara.
 
 ### 5. Mulai pakai
-1. **Data Bagian → Impor dari spreadsheet**: unduh templat 48 bagian, isi nama & WA Ketua/Sekretaris dan Pembimbing, tempel/unggah kembali.
+1. **Data Bagian → Impor dari spreadsheet**: unduh templat seluruh bagian, isi nama & WA Ketua/Sekretaris dan Pembimbing, tempel/unggah kembali.
 2. **Data Bagian → Kode akses massal**: buat kode 6 karakter untuk semua bagian, unduh Excel-nya, kirim ke tiap Sekretaris lewat tombol WA.
 3. Sekretaris membuka portal → **Masuk** → tab **Bagian** → pilih bagian → sandi (= kode akses) → **Dasbor Bagian**. Dari sana **Isi laporan**: bagian terkunci, kode tidak diminta lagi, dan program bulan lalu muncul untuk dievaluasi. Tanpa masuk pun tetap bisa: **Input Laporan** → pilih bagian → kode akses → kirim.
 4. Periode bulan berikutnya dibuka otomatis sehari setelah tenggat tanggal 5 (tanggal Umm al-Qura; admin dapat menyesuaikan di **Periode & Admin** bila penetapan pondok berbeda).
@@ -124,6 +125,7 @@ Admin berikutnya ditambahkan dari aplikasi (**Periode & Admin → Akun admin**):
 - **Login pertama.** Bagian wajib melengkapi nama & nomor WA Ketua/Sekretaris (minimal satu WA) dan Pembimbing. Bila masuk dengan kode bersama, bagian wajib membuat kode sendiri (min. 6 karakter, bebas); sebelum itu sesinya tidak bisa membuka fitur lain. Setelah kode sendiri dibuat, kode bersama tidak berlaku lagi untuk bagian itu.
 - **Kode tercatat untuk admin.** Kode dari admin maupun buatan bagian tersimpan di `department_codes` dan tampil di Data Bagian (tombol *Tampilkan kode*). Layar bagian memberi tahu hal ini dan meminta tidak memakai kata sandi pribadi. Verifikasi tetap memakai hash bcrypt.
 - **Satu rahasia per bagian.** Kode bagian = sandi akun = kode formulir tanpa masuk. Bagian dapat menggantinya di dasbor (min. 6 karakter). Huruf besar/kecil tidak dibedakan.
+- **Pembimbing Bagian dari daftar.** Login pertama, formulir, dan Data Bagian menampilkan pilihan Pembimbing dari daftar admin (Data Bagian → Daftar Pembimbing Bagian → Ubah daftar), dengan opsi *Lainnya* untuk diketik manual.
 - **Pejabat bagian diingat & dicari dari daftar guru.** Kolom Ketua/Sekretaris di formulir, login pertama, dan Data Bagian mencari nama dari `teachers` (setelah kode/sesi/admin terverifikasi). Setiap laporan terkirim menyimpan nama pejabat terbaru ke data bagian (`remember_department_officials`), lalu terisi sendiri di laporan berikutnya.
 - **Bukan Supabase Auth.** `department_login` memeriksa hash bcrypt di `departments`, lalu memberi token acak 30 hari (yang disimpan hanya hash-nya). Tidak perlu email, tidak terkena batas login Auth walau 48 bagian memakai Wi-Fi pondok yang sama.
 - **Dasbor bagian** (`department_dashboard`): headline rundown minggu berjalan & tenggat, tahapan laporan bulan ini, statistik (terkirim, tepat waktu, keterlaksanaan program, unggulan & inovasi), program kerja terbaru, kendala yang berulang ≥ 2 bulan, program yang belum terlaksana, grafik program per klasifikasi, riwayat lengkap per bulan + unduh Word resmi, dan ganti sandi.

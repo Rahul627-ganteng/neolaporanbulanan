@@ -69,7 +69,7 @@ export function OpenCycleModal({ open, onClose }) {
         <>
           <Button variant="ghost" onClick={onClose}>Batal</Button>
           <Button variant="primary" icon={RefreshCw} busy={busy} disabled={!valid} onClick={confirm}>
-            Buka periode & reset 48 status
+            Buka periode & reset status semua bagian
           </Button>
         </>
       }

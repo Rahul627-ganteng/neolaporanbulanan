@@ -4,7 +4,7 @@ import { createDemoState, createDemoTeachers, demoUid } from './demo-seed.js';
 import { normalizeWa } from '../constants.js';
 import { todayIso } from '../hijri.js';
 
-const KEY = 'kmi-laporan-demo-v3';
+const KEY = 'kmi-laporan-demo-v4';
 const clone = (v) => JSON.parse(JSON.stringify(v));
 
 function load() {
@@ -12,7 +12,7 @@ function load() {
     const raw = localStorage.getItem(KEY);
     if (raw) {
       const s = JSON.parse(raw);
-      if (s && s.version === 3) return s;
+      if (s && s.version === 4) return s;
     }
   } catch {
     /* penyimpanan tidak tersedia */
@@ -349,14 +349,23 @@ export function createDemoAdapter() {
       const r = prev && db.reports.find((x) => x.cycle_id === prev.id && x.department_id === departmentId && x.submitted_at);
       return clone((r?.programs || []).map(({ urutan, judul, kategori, target }) => ({ urutan, judul, kategori, target })));
     },
+    async setPembimbingOptions(list) {
+      const seen = new Set();
+      db.pembimbingList = list.map((s) => String(s || '').replace(/\s+/g, ' ').trim()).filter((s) => s && !seen.has(s.toLowerCase()) && seen.add(s.toLowerCase()));
+      persist();
+      return clone(db.pembimbingList);
+    },
     async formContext({ departmentId } = {}) {
       db.teachers ||= createDemoTeachers(db.departments);
+      // Daftar Pembimbing contoh: nama pembimbing fiktif dari data demo.
+      db.pembimbingList ||= [...new Set(db.departments.map((x) => x.pembimbing_nama).filter(Boolean))].sort().slice(0, 12);
       const d = departmentId ? db.departments.find((x) => x.id === departmentId) : null;
       return clone({
         department: d
           ? { id: d.id, ketua_nama: d.ketua_nama, sekretaris_nama: d.sekretaris_nama, pembimbing_nama: d.pembimbing_nama, ketua_wa: d.ketua_wa || null, sekretaris_wa: d.sekretaris_wa || null, profil_at: d.profil_at || null, kode_pribadi_at: d.kode_pribadi_at || null }
           : null,
         teachers: db.teachers.filter((t) => t.is_active !== false).map(({ nama, tahun, kelompok }) => ({ nama, tahun, kelompok })),
+        pembimbing: db.pembimbingList,
       });
     },
     async replaceTeachers(rows) {

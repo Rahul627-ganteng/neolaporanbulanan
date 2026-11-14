@@ -8,6 +8,7 @@ import { routineHits, toPayload, validateReport } from '../lib/validation.js';
 import { Button, Callout, cx, Field, Input, Panel, Select, Textarea } from './ui.jsx';
 import { ReminderCardModal } from './ReminderCard.jsx';
 import NameCombobox from './NameCombobox.jsx';
+import PembimbingField from './PembimbingField.jsx';
 
 const emptyForm = (cycleId = '') => ({
   cycle_id: cycleId,
@@ -82,7 +83,7 @@ function StringList({ idPrefix, items, onChange, placeholder, renderExtra, addLa
 }
 
 export default function ReportForm({ go }) {
-  const { cycles, activeCycle, prevCycle, viewCycle, activeDepartments, departments, reportsByCycle, isAdmin, mode, today, week, actions, loadReports, bagian, departmentData, teachers } = useStore();
+  const { cycles, activeCycle, prevCycle, viewCycle, activeDepartments, departments, reportsByCycle, isAdmin, mode, today, week, actions, loadReports, bagian, departmentData, teachers, pembimbingOptions } = useStore();
   // Masuk sebagai bagian: bagian terkunci, kode akses diganti token sesi.
   const asBagian = Boolean(bagian) && !isAdmin;
   const ownId = asBagian ? bagian.department.id : null;
@@ -387,7 +388,7 @@ export default function ReportForm({ go }) {
                 />
               </Field>
               <Field label="Pembimbing Bagian" className="sm:col-span-2" hint="Nama pejabat diingat dari laporan terakhir dan bisa diubah bila berganti.">
-                <Input id="f-pemb" value={form.pembimbing_nama} onChange={(e) => patch({ pembimbing_nama: e.target.value })} placeholder="Nama Pembimbing Bagian" />
+                <PembimbingField id="f-pemb" value={form.pembimbing_nama} onChange={(v) => patch({ pembimbing_nama: v })} options={pembimbingOptions || []} />
               </Field>
             </div>
 
