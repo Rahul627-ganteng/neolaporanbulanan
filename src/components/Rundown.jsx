@@ -110,6 +110,8 @@ export default function Rundown() {
   const policy = REMINDER_POLICY[sel];
   const billed = sel === 1 ? prevCycle : viewCycle;
   const billedMap = sel === 1 ? prevReportByDept : reportByDept;
+  // Sama dengan planReminderQueue: Minggu 1 tidak menagih lagi setelah tenggat bulan lalu lewat.
+  const billPrevClosed = sel === 1 && (!prevCycle || today > prevCycle.deadline_date);
 
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -117,10 +119,10 @@ export default function Rundown() {
       if (needle && !d.nama.toLowerCase().includes(needle)) return false;
       const sub = Boolean(billedMap.get(d.id)?.submitted_at);
       if (scope === 'belum') return !sub;
-      if (scope === 'kebijakan') return policy.scope === 'semua' || !sub;
+      if (scope === 'kebijakan') return !billPrevClosed && (policy.scope === 'semua' || !sub);
       return true;
     });
-  }, [activeDepartments, billedMap, scope, policy, q]);
+  }, [activeDepartments, billedMap, scope, policy, q, billPrevClosed]);
 
   const messageFor = (d, r) =>
     buildReminderMessage({
@@ -199,7 +201,7 @@ export default function Rundown() {
               <Input id="rundown-search" className="h-9 pl-9" placeholder="Cari bagian" value={q} onChange={(e) => setQ(e.target.value)} />
             </div>
             <p className="text-[12.5px] text-muted">
-              {sel === 1 ? (prevCycle ? 'Minggu 1 menagih laporan bulan lalu.' : 'Belum ada siklus bulan lalu.') : sel === 4 ? 'Minggu 4 menagih softfile bulan ini.' : 'Minggu ini fokus pelaksanaan & evaluasi program.'}
+              {sel === 1 ? (!prevCycle ? 'Belum ada siklus bulan lalu.' : billPrevClosed ? 'Tenggat laporan bulan lalu sudah lewat; Minggu 1 tidak menagih lagi.' : 'Minggu 1 menagih laporan bulan lalu.') : sel === 4 ? 'Minggu 4 menagih softfile bulan ini.' : 'Minggu ini fokus pelaksanaan & evaluasi program.'}
             </p>
           </div>
           {rows.length === 0 ? (
@@ -223,7 +225,8 @@ export default function Rundown() {
                 <tbody className="divide-y divide-line">
                   {rows.map((d) => {
                     const rep = reportByDept.get(d.id);
-                    const st = reportState(rep, viewCycle, today);
+                    // Status mengikuti laporan yang ditagih (Minggu 1 = bulan lalu), sama dengan saringan.
+                    const st = sel === 1 && billed ? reportState(billedMap.get(d.id), billed, today) : reportState(rep, viewCycle, today);
                     const qd = queue.find((x) => x.department_id === d.id && x.week === sel && x.target_role === role);
                     return (
                       <tr key={d.id} className="align-middle">
