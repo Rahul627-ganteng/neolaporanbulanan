@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { ArrowRight, ClipboardList, Download, FileEdit, Inbox, Star } from 'lucide-react';
 import { useStore } from '../lib/store.jsx';
 import { cycleMonthName, daysBetween, deadlineText, nextMonthLabel, formatGregorian } from '../lib/constants.js';
-import { formatTimestamp } from '../lib/hijri.js';
+import { cycleOpenDate, formatTimestamp, isInputOpen } from '../lib/hijri.js';
 import { reportState, STATE_META } from '../lib/status.js';
 import { Badge, Button, Empty, Panel, Progress, StatusDot } from './ui.jsx';
 import WeekStepper from './WeekStepper.jsx';
@@ -43,7 +43,11 @@ export default function Dashboard({ go }) {
           label="Tenggat"
           value={<span className="tabular-nums">{left >= 0 ? `${left} hari` : 'Lewat'}</span>}
           sub={`${deadlineText(viewCycle).replace(/ \(.*/, '')} · ${formatGregorian(viewCycle.deadline_date, true)}`}
-        />
+        >
+          {viewCycle.status === 'aktif' && !isInputOpen(viewCycle, today) && (
+            <span className="text-[12.5px] font-semibold text-brand">Input dibuka {formatGregorian(cycleOpenDate(viewCycle), true)}</span>
+          )}
+        </Stat>
         <Stat
           label="Program unggulan"
           value={<span className="tabular-nums">{unggulan.length}</span>}

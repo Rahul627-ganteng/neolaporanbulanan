@@ -3,7 +3,9 @@
 
 Sistem informasi pelaporan bulanan untuk 49 bagian Sektor Guru KMI: formulir softfile resmi, pelacak Rundown 4 minggu, pengingat WhatsApp dengan konfirmasi admin, kartu pengingat target program, dokumen Word resmi, daftar belum lapor, dan panel admin bergrafik. Satu kode sumber berjalan dalam dua mode:
 
-**Alur laporan.** Laporan bulan M berisi *hasil usaha selama bulan M* dan *program kerja bulan M+1*. Laporan dikerjakan di akhir bulan M (Minggu 3–4) dan dikumpulkan paling lambat **tanggal 5 bulan M+1**. Siklus M tetap aktif sampai tenggat itu; sehari setelahnya Edge Function membuka siklus M+1 otomatis. Laporan M yang terlambat tetap diterima dan ditandai *terlambat*.
+**Alur laporan.** Laporan bulan M berisi *hasil usaha selama bulan M* dan *program kerja bulan M+1*. Laporan dikerjakan di akhir bulan M (Minggu 3–4) dan dikumpulkan paling lambat **tanggal 5 bulan M+1**. Siklus M tetap aktif sampai tenggat itu; sehari setelahnya Edge Function membuka siklus M+1 otomatis (rundown berjalan), tetapi **input softfile-nya baru dibuka tanggal 20 Hijriah** (`input_open_date`, bisa diubah admin per bulan). Laporan M yang terlambat tetap diterima dan ditandai *terlambat*.
+
+**Berurutan.** Bagian tidak bisa mengirim laporan bulan M+1 selama laporan bulan M (atau bulan lain yang lebih awal dan sudah dibuka) belum terkirim. Formulir otomatis membuka bulan yang tertunggak dan dasbor bagian menampilkan peringatannya. Admin tidak terkena aturan ini, dan bisa memindahkan laporan yang masuk ke bulan yang salah (**Laporan Masuk → Pindah bulan**, RPC `move_report`).
 
 | Mode | Kapan aktif | Penyimpanan |
 |---|---|---|
@@ -32,6 +34,7 @@ supabase/
     20261114130000_direktori_guru.sql               daftar guru (tanpa data di repo) & pejabat bagian diingat
     20261114140000_kode_awal_profil_bagian.sql      kode awal bersama, login pertama, kode tercatat untuk admin
     20261114150000_sekwapeng_pembimbing.sql         bagian Sekretaris Wakil Pengasuh (no. 4) & daftar Pembimbing
+    20261116090000_laporan_berurutan_buka_tgl20.sql input dibuka tgl 20, laporan berurutan, pindah laporan ke bulan lain
   functions/
     _shared/rundown.js              aturan rundown & template WA (dipakai frontend + Edge Function)
     _shared/hijri.js                kalender Hijriah (Umm al-Qura) & rencana pembukaan periode
@@ -45,7 +48,7 @@ scripts/build-artifact.mjs          membangun prototipe single-file dari kode ya
 
 ### Tabel utama
 - `academic_periods` — tahun ajaran lintas periode (dibuat otomatis tiap Syawal, atau manual dari menu **Periode & Admin**).
-- `monthly_cycles` — satu bulan Hijriah = satu siklus; `deadline_date` = tanggal 5 bulan berikutnya; `active_week` opsional (manual).
+- `monthly_cycles` — satu bulan Hijriah = satu siklus; `input_open_date` = tanggal buka input (bawaan tanggal 20 bulan itu); `deadline_date` = tanggal 5 bulan berikutnya; `active_week` opsional (manual).
 - `departments` — 49 bagian (Sekretaris Wakil Pengasuh = nomor 4 sejak migrasi 12) + nama & WA Ketua/Sekretaris, nama Pembimbing, hash kode akses.
 - `monthly_reports` — Hasil Usaha, Kendala (berkategori), Solusi, status, dan cap waktu tahapan rundown (rapat bagian, draf ke Guru Senior, persetujuan Pembimbing, softfile, hardfile Staf Sekretaris Wakil Pengasuh).
 - `priority_programs` — Program Kerja Satu Bulan ke Depan + klasifikator 🌟 Unggulan / 🚀 Inovasi / 🛠️ Tindak Lanjut / 📌 Reguler.
@@ -116,7 +119,7 @@ Admin berikutnya ditambahkan dari aplikasi (**Periode & Admin → Akun admin**):
 1. **Data Bagian → Impor dari spreadsheet**: unduh templat seluruh bagian, isi nama & WA Ketua/Sekretaris dan Pembimbing, tempel/unggah kembali.
 2. **Data Bagian → Kode akses massal**: buat kode 6 karakter untuk semua bagian, unduh Excel-nya, kirim ke tiap Sekretaris lewat tombol WA.
 3. Sekretaris membuka portal → **Masuk** → tab **Bagian** → pilih bagian → sandi (= kode akses) → **Dasbor Bagian**. Dari sana **Isi laporan**: bagian terkunci, kode tidak diminta lagi, dan program bulan lalu muncul untuk dievaluasi. Tanpa masuk pun tetap bisa: **Input Laporan** → pilih bagian → kode akses → kirim.
-4. Periode bulan berikutnya dibuka otomatis sehari setelah tenggat tanggal 5 (tanggal Umm al-Qura; admin dapat menyesuaikan di **Periode & Admin** bila penetapan pondok berbeda).
+4. Periode bulan berikutnya dibuka otomatis sehari setelah tenggat tanggal 5, dan input softfile-nya dibuka tanggal 20 (tanggal Umm al-Qura; admin dapat menyesuaikan di **Periode & Admin → Ubah tanggal**, termasuk tombol *Buka input hari ini*).
 
 ---
 
@@ -135,7 +138,8 @@ Admin berikutnya ditambahkan dari aplikasi (**Periode & Admin → Akun admin**):
 
 ## Otomatisasi pengingat (pg_cron + Edge Function)
 - Setiap hari 06.05 WIB, `cron.schedule('kmi-weekly-reminder')` memanggil `public.trigger_weekly_reminder()` → `net.http_post` ke Edge Function dengan secret `cron_secret` dari Vault. Edge Function mencocokkan token itu langsung ke Vault (`check_cron_secret`), jadi `CRON_SECRET` di env fungsi bersifat opsional.
-- Edge Function pertama-tama membuka periode bulan baru bila tenggat siklus aktif sudah lewat (`open_cycle_auto`; tahun ajaran baru dibuat otomatis di bulan Syawal; pengingat lama yang belum terkirim ditandai dilewati).
+- Edge Function pertama-tama membuka periode bulan baru bila tenggat siklus aktif sudah lewat (`open_cycle_auto`, dengan tanggal buka input = tanggal 20 Hijriah; tahun ajaran baru dibuat otomatis di bulan Syawal; pengingat lama yang belum terkirim ditandai dilewati).
+- Pengingat Minggu 3 menyebut tanggal buka input; pengingat Minggu 2–4 bagian yang laporan bulan lalunya belum masuk menyertakan catatan bahwa laporan itu harus diselesaikan dulu.
 - Lalu menghitung minggu rundown (hari ke-0/7/14/21 sejak awal bulan = pergantian minggu) dan mengisi `notification_queue` sesuai kebijakan:
 
 | Minggu | Penerima | Bagian |
@@ -151,7 +155,7 @@ Admin berikutnya ditambahkan dari aplikasi (**Periode & Admin → Akun admin**):
 
 ## Keamanan
 - RLS aktif di semua tabel. Publik hanya membaca nama bagian, tahun ajaran, dan siklus; isi laporan & nomor WA hanya untuk admin.
-- Sekretaris mengirim laporan lewat RPC `submit_report` dengan kode akses bagian (bcrypt, tidak peka huruf besar/kecil) atau token sesi akun bagian. Sekretaris dapat mengirim untuk siklus aktif dan satu siklus sebelumnya; yang lebih lama hanya lewat admin.
+- Sekretaris mengirim laporan lewat RPC `submit_report` dengan kode akses bagian (bcrypt, tidak peka huruf besar/kecil) atau token sesi akun bagian. Bagian mengirim mulai tanggal buka input, berurutan (bulan tertunggak dulu, boleh susulan). Perbaikan laporan yang sudah terkirim hanya untuk siklus aktif dan satu siklus sebelumnya; yang lebih lama lewat admin. `report_outstanding` hanya membuka status kirim (yang memang publik), bukan isi laporan.
 - Akun bagian hanya membaca laporan bagiannya sendiri lewat RPC; tabel sesi tidak dapat dibaca langsung oleh siapa pun selain fungsi database.
 - Admin tidak dapat mencabut hak adminnya sendiri, dan daftar admin tidak boleh kosong.
 - `service_role` key hanya dipakai di Edge Function (otomatis dari Supabase), tidak pernah di frontend atau Netlify.

@@ -4,6 +4,7 @@
 //  Panel Admin. Dua tugas:
 //   1. Membuka periode bulan baru otomatis sehari setelah tenggat tanggal 5
 //      (laporan bulan M dikumpulkan sampai 5 bulan M+1; lihat planCycleRollover).
+//      Input softfile bulan baru itu sendiri baru dibuka tanggal 20 Hijriah.
 //   2. Pada hari pergantian minggu (tgl 1, 8, 15, 22 Hijriah) menyiapkan
 //      antrean pengingat WA sesuai agenda rundown.
 //  Pesan tidak dikirim di sini — admin mengirimnya manual (human-in-the-loop).
@@ -96,9 +97,10 @@ Deno.serve(async (req) => {
       p_deadline: plan.deadline_date,
       p_ta_masehi: plan.ta_masehi,
       p_ta_hijri: plan.ta_hijri,
+      p_input_open: plan.input_open_date,
     });
     if (oErr) return json({ error: `Gagal membuka periode otomatis: ${oErr.message}` }, 500);
-    opened = `${plan.hijri_month}/${plan.hijri_year} (${plan.start_date} s.d. ${plan.end_date}, tenggat ${plan.deadline_date})`;
+    opened = `${plan.hijri_month}/${plan.hijri_year} (${plan.start_date} s.d. ${plan.end_date}, input dibuka ${plan.input_open_date}, tenggat ${plan.deadline_date})`;
   }
 
   // --- 2. Siklus aktif & minggu rundown ---

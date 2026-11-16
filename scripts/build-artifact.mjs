@@ -126,6 +126,7 @@ const NOTES = {
   'supabase/migrations/20261114130000_direktori_guru.sql': 'Daftar guru & pejabat bagian diingat',
   'supabase/migrations/20261114140000_kode_awal_profil_bagian.sql': 'Kode awal bersama & login pertama bagian',
   'supabase/migrations/20261114150000_sekwapeng_pembimbing.sql': 'Bagian Sekretaris Wakil Pengasuh & daftar Pembimbing',
+  'supabase/migrations/20261116090000_laporan_berurutan_buka_tgl20.sql': 'Input dibuka tgl 20, laporan berurutan, pindah bulan',
   'supabase/functions/_shared/rundown.js': 'Aturan rundown & template WA (bersama)',
   '.github/workflows/deploy.yml': 'CI/CD: build → migrasi → deploy',
   'netlify.toml': 'Build, SPA redirect, header, env',

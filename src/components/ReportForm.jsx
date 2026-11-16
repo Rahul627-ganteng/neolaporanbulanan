@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, CheckCircle2, Key, ListChecks, Plus, Send, ShieldCheck, Sparkles, Trash2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Key, ListChecks, Lock, Plus, Send, ShieldCheck, Sparkles, Trash2 } from 'lucide-react';
 import { useStore } from '../lib/store.jsx';
 import { cycleLabel, cycleMonthName, deadlineText, KENDALA_CATEGORIES, nextMonthLabel, PROGRAM_CATEGORIES, programCategory } from '../lib/constants.js';
 import { EVAL_STATUS } from '../lib/evaluasi.js';
-import { formatTimestamp } from '../lib/hijri.js';
+import { cycleKey, formatTimestamp, inputOpenText, isInputOpen } from '../lib/hijri.js';
 import { routineHits, toPayload, validateReport } from '../lib/validation.js';
 import { Button, Callout, cx, Field, Input, Panel, Select, Textarea } from './ui.jsx';
 import { ReminderCardModal } from './ReminderCard.jsx';
@@ -83,25 +83,31 @@ function StringList({ idPrefix, items, onChange, placeholder, renderExtra, addLa
 }
 
 export default function ReportForm({ go }) {
-  const { cycles, activeCycle, prevCycle, viewCycle, activeDepartments, departments, reportsByCycle, isAdmin, mode, today, week, actions, loadReports, bagian, departmentData, teachers, pembimbingOptions } = useStore();
+  const { cycles, activeCycle, viewCycle, activeDepartments, departments, reportsByCycle, isAdmin, mode, today, actions, loadReports, bagian, departmentData, teachers, pembimbingOptions } = useStore();
   // Masuk sebagai bagian: bagian terkunci, kode akses diganti token sesi.
   const asBagian = Boolean(bagian) && !isAdmin;
   const ownId = asBagian ? bagian.department.id : null;
   const ownData = ownId ? departmentData[ownId] : null;
 
-  // Sama dengan aturan submit_report: sekretaris boleh mengirim untuk siklus aktif
-  // dan satu siklus sebelumnya (lewat tenggat tercatat terlambat). Admin: semua.
+  const defaultCycle = (activeCycle || viewCycle)?.id || '';
+
+  const [form, setForm] = useState(() => emptyForm(defaultCycle));
+  // Bulan yang sudah dibuka tetapi belum dilaporkan bagian terpilih (urut dari yang terlama).
+  const [outstanding, setOutstanding] = useState({ deptId: '', list: [] });
+  const [switched, setSwitched] = useState(null);
+  const outList = useMemo(
+    () => (outstanding.deptId && outstanding.deptId === form.department_id ? outstanding.list : []),
+    [outstanding, form.department_id]
+  );
+
+  // Sama dengan aturan submit_report: bagian mengirim untuk bulan aktif, satu bulan sebelumnya,
+  // dan bulan lain yang masih tertunggak (susulan, tercatat terlambat). Admin: semua.
   const openCycles = useMemo(() => {
     if (isAdmin) return cycles;
     const archived = cycles.filter((c) => c.status === 'arsip').sort((a, b) => b.start_date.localeCompare(a.start_date));
-    return cycles.filter((c) => c.status === 'aktif' || c.id === archived[0]?.id);
-  }, [cycles, isAdmin]);
-  const defaultCycle = useMemo(() => {
-    const prevOpen = activeCycle && week === 1 && prevCycle && today <= prevCycle.deadline_date ? prevCycle : null;
-    return (prevOpen || activeCycle || viewCycle)?.id || '';
-  }, [activeCycle, prevCycle, viewCycle, week, today]);
-
-  const [form, setForm] = useState(() => emptyForm(defaultCycle));
+    const owed = new Set(outList.map((o) => o.cycle_id));
+    return cycles.filter((c) => c.status === 'aktif' || c.id === archived[0]?.id || owed.has(c.id));
+  }, [cycles, isAdmin, outList]);
   const [problems, setProblems] = useState(null);
   const [confirmWarn, setConfirmWarn] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -112,6 +118,11 @@ export default function ReportForm({ go }) {
   }, [defaultCycle, form.cycle_id]);
 
   const cycle = cycles.find((c) => c.id === form.cycle_id) || activeCycle;
+  // Laporan berurutan: bulan tertunggak yang lebih awal menahan bulan yang dipilih.
+  const blocker = cycle && form.department_id ? outList.find((o) => cycleKey(o) < cycleKey(cycle)) : null;
+  const blockerCycle = blocker ? cycles.find((c) => c.id === blocker.cycle_id) || null : null;
+  const notOpen = Boolean(cycle) && !isInputOpen(cycle, today);
+  const locked = !isAdmin && notOpen;
   const dept = departments.find((d) => d.id === form.department_id);
   const existing = cycle && form.department_id ? (reportsByCycle[cycle.id] || []).find((r) => r.department_id === form.department_id) : null;
   const requireCode = mode === 'supabase' && !isAdmin && !asBagian;
@@ -125,6 +136,29 @@ export default function ReportForm({ go }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cycle?.id]);
 
+  // Muat ulang daftar tertunggak setiap kali bagian berganti atau status laporan berubah.
+  useEffect(() => {
+    const id = form.department_id;
+    if (!id) return undefined;
+    let off = false;
+    actions
+      .loadOutstanding(id)
+      .then((list) => !off && setOutstanding({ deptId: id, list: list || [] }))
+      .catch(() => !off && setOutstanding({ deptId: id, list: [] }));
+    return () => {
+      off = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.department_id, reportsByCycle]);
+
+  // Bagian (bukan admin) yang masih punya laporan tertunggak dipindahkan ke bulan itu dulu.
+  useEffect(() => {
+    if (isAdmin || !blockerCycle || !cycle) return;
+    setSwitched({ from: cycle, to: blockerCycle });
+    setForm((f) => ({ ...f, cycle_id: blockerCycle.id, evaluasi: [] }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [blockerCycle?.id, cycle?.id, isAdmin]);
+
   const patch = (p) => {
     setForm((f) => ({ ...f, ...p }));
     setProblems(null);
@@ -132,6 +166,7 @@ export default function ReportForm({ go }) {
   };
 
   const pickDepartment = (id) => {
+    if (id !== form.department_id) setSwitched(null);
     const d = { ...departments.find((x) => x.id === id), ...(departmentData[id]?.department || {}) };
     const rep = cycle ? fullReport(id, cycle.id) : null;
     if (rep?.submitted_at && rep.hasil_usaha?.length) {
@@ -267,7 +302,9 @@ export default function ReportForm({ go }) {
       });
       const report = { ...saved, ...payload, submitted_at: existing?.submitted_at || saved.submitted_at || new Date().toISOString() };
       setDone({ report, department: dept, cycle, revised: Boolean(existing?.submitted_at), showCard: true });
-      setForm(emptyForm(form.cycle_id));
+      // Setelah susulan terkirim, formulir kembali ke bulan aktif.
+      setForm(emptyForm(cycle.status === 'aktif' ? form.cycle_id : activeCycle?.id || form.cycle_id));
+      setSwitched(null);
       setProblems(null);
       setConfirmWarn(false);
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -299,14 +336,34 @@ export default function ReportForm({ go }) {
               Berisi hasil usaha selama {cycleMonthName(cycle)} dan program kerja {nextMonthLabel(cycle)}. Dikumpulkan di akhir{' '}
               {cycleMonthName(cycle)} sampai {deadlineText(cycle)}
               {today > cycle.deadline_date ? '; laporan yang masuk sekarang tercatat terlambat.' : '.'}
+              {notOpen && <> Input softfile dibuka {inputOpenText(cycle)}.</>}
             </Callout>
+            {switched && !isAdmin && switched.to.id === cycle.id && (
+              <Callout tone="warn" title={`Selesaikan dulu laporan ${cycleLabel(switched.to)}`}>
+                Laporan {cycleLabel(switched.from)} baru bisa diisi setelah laporan {cycleMonthName(switched.to)} terkirim. Formulir ini sekarang untuk
+                laporan {cycleMonthName(switched.to)}
+                {today > switched.to.deadline_date ? ' dan tercatat terlambat.' : '.'}
+              </Callout>
+            )}
+            {isAdmin && blockerCycle && (
+              <Callout tone="warn" title={`Laporan ${cycleLabel(blockerCycle)} bagian ini belum terkirim`}>
+                Bagian tidak bisa mengirim laporan {cycleMonthName(cycle)} sebelum laporan {cycleMonthName(blockerCycle)} masuk. Sebagai admin Anda tetap bisa mengirim.
+              </Callout>
+            )}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field label="Laporan bulan">
-                <Select id="f-cycle" value={form.cycle_id} onChange={(e) => patch({ cycle_id: e.target.value, department_id: '', evaluasi: [] })}>
+                <Select
+                  id="f-cycle"
+                  value={form.cycle_id}
+                  onChange={(e) => {
+                    setSwitched(null);
+                    patch(asBagian ? { cycle_id: e.target.value, evaluasi: [] } : { cycle_id: e.target.value, department_id: '', evaluasi: [] });
+                  }}
+                >
                   {openCycles.map((c) => (
                     <option key={c.id} value={c.id}>
                       {cycleLabel(c)}
-                      {c.status === 'arsip' ? (today > c.deadline_date ? ' · terlambat' : ' · bulan lalu') : ''}
+                      {c.status === 'arsip' ? (today > c.deadline_date ? ' · terlambat' : ' · bulan lalu') : !isInputOpen(c, today) ? ' · belum dibuka' : ''}
                     </option>
                   ))}
                 </Select>
@@ -392,6 +449,22 @@ export default function ReportForm({ go }) {
               </Field>
             </div>
 
+            {locked ? (
+              <div className="flex items-start gap-3 rounded-xl border border-line bg-mist px-4 py-4 text-[13.5px] leading-relaxed text-ink">
+                <Lock className="mt-0.5 size-5 shrink-0 text-brand" aria-hidden />
+                <div className="flex flex-col gap-1.5">
+                  <p className="font-semibold">Input laporan {cycleLabel(cycle)} belum dibuka</p>
+                  <p className="text-muted">
+                    Softfile laporan {cycleMonthName(cycle)} bisa dikirim mulai <strong className="text-ink">{inputOpenText(cycle)}</strong> sampai{' '}
+                    {deadlineText(cycle)}. Sementara itu laksanakan program kerja, rapat bagian, dan serahkan draf hardfile ke Pembimbing.
+                  </p>
+                  {!form.department_id && (
+                    <p className="text-muted">Bagian yang laporan bulan sebelumnya belum terkirim: pilih nama bagian, formulir akan beralih ke laporan yang tertunggak.</p>
+                  )}
+                </div>
+              </div>
+            ) : (
+            <>
             {existing?.submitted_at && (
               <Callout tone="info" title="Bagian ini sudah melapor">
                 Softfile masuk {formatTimestamp(existing.submitted_at)}. Mengirim ulang akan memperbarui isi laporan; waktu kirim pertama tetap dicatat untuk penilaian ketepatan waktu.
@@ -595,6 +668,8 @@ export default function ReportForm({ go }) {
                 </Button>
               )}
             </div>
+            </>
+            )}
           </div>
         </Panel>
       </div>
@@ -612,6 +687,7 @@ export default function ReportForm({ go }) {
           <div className="mt-4 border-t border-line pt-3">
             <p className="font-semibold text-ink">NB</p>
             <p>Laporan bulanan dikumpulkan pada tanggal 5 Hijriah pada bulan selanjutnya.</p>
+            <p className="mt-1">Input softfile dibuka tanggal 20 Hijriah. Laporan diisi berurutan: bulan yang tertunggak diselesaikan dulu.</p>
             <p className="mt-1">Penulisan laporan bulanan bersifat inovatif, bukan rutinitas.</p>
           </div>
         </Panel>

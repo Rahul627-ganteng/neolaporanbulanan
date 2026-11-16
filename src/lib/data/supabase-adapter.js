@@ -129,7 +129,7 @@ export function createSupabaseAdapter() {
     },
 
     async openCycle(c) {
-      return must(
+      const id = must(
         await sb.rpc('open_new_cycle', {
           p_period_id: c.period_id,
           p_hijri_month: c.hijri_month,
@@ -140,6 +140,8 @@ export function createSupabaseAdapter() {
           p_deadline: c.deadline_date,
         })
       );
+      if (c.input_open_date) must(await sb.from('monthly_cycles').update({ input_open_date: c.input_open_date }).eq('id', id));
+      return id;
     },
     async updateCycle(cycleId, patch) {
       must(await sb.from('monthly_cycles').update(patch).eq('id', cycleId));
@@ -155,6 +157,13 @@ export function createSupabaseAdapter() {
         })
       );
       return { id, cycle_id: cycleId, department_id: departmentId, status: 'terkirim', submitted_at: new Date().toISOString(), ...payload };
+    },
+    /** Bulan yang sudah dibuka tetapi belum dilaporkan bagian ini (urut dari yang terlama). */
+    async reportOutstanding(departmentId) {
+      return must(await sb.rpc('report_outstanding', { p_department_id: departmentId })) || [];
+    },
+    async moveReport({ reportId, targetCycleId, swap = false }) {
+      return must(await sb.rpc('move_report', { p_report_id: reportId, p_target_cycle_id: targetCycleId, p_swap: swap }));
     },
     async setStage(reportId, key, on) {
       must(await sb.from('monthly_reports').update({ [key]: on ? new Date().toISOString() : null }).eq('id', reportId));

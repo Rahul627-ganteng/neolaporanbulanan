@@ -126,7 +126,8 @@ export function isoOfTimestamp(ts) {
  * Rencana pembukaan periode otomatis.
  * Laporan bulan M dikerjakan di akhir M dan dikumpulkan sampai tanggal 5 bulan M+1,
  * jadi siklus M tetap aktif sampai tenggatnya lewat. Sehari setelah tenggat,
- * bulan Hijriah yang sedang berjalan dibuka sebagai siklus baru.
+ * bulan Hijriah yang sedang berjalan dibuka sebagai siklus baru (rundown
+ * berjalan), sedangkan input softfile-nya baru dibuka tanggal 20 (input_open_date).
  * Mengembalikan null bila tidak perlu membuka apa pun.
  */
 export function planCycleRollover({ active, latest, today }) {
@@ -146,6 +147,8 @@ export function planCycleRollover({ active, latest, today }) {
   if (ref && ref.end_date >= start) start = addDays(ref.end_date, 1);
   if (start > range.end) start = range.end;
   const ta = academicYearFor(target.month, target.year);
+  let open = inputOpenDateFor(target.month, target.year, range.deadline);
+  if (open < start) open = start;
   return {
     hijri_month: target.month,
     hijri_year: target.year,
@@ -153,10 +156,39 @@ export function planCycleRollover({ active, latest, today }) {
     start_date: start,
     end_date: range.end,
     deadline_date: range.deadline,
+    input_open_date: open,
     ta_masehi: ta.label_masehi,
     ta_hijri: ta.label_hijri,
   };
 }
+
+/** Input softfile laporan bulan M dibuka tanggal 20 bulan M (bawaan; admin dapat mengubah per bulan). */
+export const INPUT_OPEN_DAY = 20;
+
+export function inputOpenDateFor(month, year, deadlineIso) {
+  const iso = hijriToIso(year, month, INPUT_OPEN_DAY);
+  return deadlineIso && iso > deadlineIso ? deadlineIso : iso;
+}
+
+/** Tanggal buka input sebuah siklus (kolom input_open_date; cadangan: tanggal 20). */
+export function cycleOpenDate(cycle) {
+  if (!cycle) return null;
+  return cycle.input_open_date || addDays(cycle.start_date, INPUT_OPEN_DAY - 1);
+}
+
+export function isInputOpen(cycle, today) {
+  const d = cycleOpenDate(cycle);
+  return Boolean(d) && today >= d;
+}
+
+/** "20 Jumadil Akhir 1448 H (Senin, 30 November 2026)" */
+export function inputOpenText(cycle) {
+  const d = cycleOpenDate(cycle);
+  return d ? `${formatHijri(d)} (${formatMasehi(d, true)})` : '';
+}
+
+/** Urutan bulan untuk perbandingan (tahun × 12 + bulan). */
+export const cycleKey = (c) => Number(c.hijri_year) * 12 + Number(c.hijri_month);
 
 /** Siklus yang sedang dalam masa pengumpulan (sudah lewat akhir bulan, belum lewat tenggat). */
 export function inCollectionWindow(cycle, today) {

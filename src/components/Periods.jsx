@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Archive, CalendarPlus, CalendarRange, CheckCircle2, Eye, Plus, RefreshCw } from 'lucide-react';
 import { useStore } from '../lib/store.jsx';
 import { cycleLabel, deadlineText, formatGregorian, HIJRI_MONTHS, nextHijriMonth } from '../lib/constants.js';
-import { academicYearFor, hijriMonthRange, masehiLabelFor, nextAcademicLabels, toHijri } from '../lib/hijri.js';
+import { academicYearFor, cycleOpenDate, formatHijri, hijriMonthRange, inputOpenDateFor, isInputOpen, masehiLabelFor, nextAcademicLabels, toHijri } from '../lib/hijri.js';
 import { Badge, Button, Callout, Empty, Field, Input, Modal, Panel, Select } from './ui.jsx';
 import AdminAccounts from './AdminAccounts.jsx';
 
@@ -16,7 +16,11 @@ export function OpenCycleModal({ open, onClose }) {
   }, [cycles, today]);
   const [month, setMonth] = useState(suggestion.month);
   const [year, setYear] = useState(suggestion.year);
-  const [dates, setDates] = useState(() => hijriMonthRange(suggestion.month, suggestion.year));
+  const rangeOf = (m, y) => {
+    const r = hijriMonthRange(m, y);
+    return { ...r, open: inputOpenDateFor(m, y, r.deadline) };
+  };
+  const [dates, setDates] = useState(() => rangeOf(suggestion.month, suggestion.year));
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -26,7 +30,7 @@ export function OpenCycleModal({ open, onClose }) {
     }
   }, [open, suggestion.month, suggestion.year]);
   useEffect(() => {
-    if (month && year > 1400) setDates(hijriMonthRange(Number(month), Number(year)));
+    if (month && year > 1400) setDates(rangeOf(Number(month), Number(year)));
   }, [month, year]);
 
   if (!open) return null;
@@ -35,7 +39,7 @@ export function OpenCycleModal({ open, onClose }) {
   const exists = cycles.some((c) => c.hijri_month === Number(month) && c.hijri_year === Number(year));
   const pending = activeCycle ? activeDepartments.filter((d) => !reportByDept.get(d.id)?.submitted_at).length : 0;
   const masehi = masehiLabelFor(dates.start, dates.end);
-  const valid = !exists && dates.start && dates.end && dates.deadline && dates.deadline > dates.end && dates.end >= dates.start;
+  const valid = !exists && dates.start && dates.end && dates.deadline && dates.deadline > dates.end && dates.end >= dates.start && dates.open && dates.open <= dates.deadline;
 
   const confirm = async () => {
     setBusy(true);
@@ -50,6 +54,7 @@ export function OpenCycleModal({ open, onClose }) {
         start_date: dates.start,
         end_date: dates.end,
         deadline_date: dates.deadline,
+        input_open_date: dates.open,
       });
       onClose();
     } catch {
@@ -90,7 +95,10 @@ export function OpenCycleModal({ open, onClose }) {
           <Field label="Akhir bulan" hint={formatGregorian(dates.end, true)}>
             <Input id="oc-end" type="date" value={dates.end} onChange={(e) => setDates((d) => ({ ...d, end: e.target.value }))} />
           </Field>
-          <Field label="Tenggat (tanggal 5 bulan berikutnya)" hint={formatGregorian(dates.deadline, true)} className="sm:col-span-2">
+          <Field label="Input laporan dibuka (tanggal 20)" hint={dates.open ? `${formatHijri(dates.open)} · ${formatGregorian(dates.open, true)}` : ''}>
+            <Input id="oc-open" type="date" value={dates.open} onChange={(e) => setDates((d) => ({ ...d, open: e.target.value }))} />
+          </Field>
+          <Field label="Tenggat (tanggal 5 bulan berikutnya)" hint={formatGregorian(dates.deadline, true)}>
             <Input id="oc-deadline" type="date" value={dates.deadline} onChange={(e) => setDates((d) => ({ ...d, deadline: e.target.value }))} />
           </Field>
         </div>
@@ -105,6 +113,7 @@ export function OpenCycleModal({ open, onClose }) {
               <li>Tahun ajaran: {ta.label_masehi} / {ta.label_hijri}{period ? '' : ' (akan dibuat otomatis)'}.</li>
               {activeCycle && <li>{cycleLabel(activeCycle)} diarsipkan; {pending} bagian yang belum lapor masih bisa mengirim sampai {deadlineText(activeCycle)}.</li>}
               <li>{activeDepartments.length} status pelaporan baru dibuat dengan status belum lapor.</li>
+              <li>Bagian baru bisa mengirim laporan bulan ini mulai {formatGregorian(dates.open, true)}, dan hanya setelah laporan bulan sebelumnya terkirim.</li>
               <li>Rundown minggu 1–4 dihitung ulang dari tanggal mulai.</li>
             </ul>
           </Callout>
@@ -115,7 +124,7 @@ export function OpenCycleModal({ open, onClose }) {
 }
 
 export default function Periods({ onOpenCycle }) {
-  const { periods, cycles, viewCycle, reportsByCycle, actions, loadReports } = useStore();
+  const { periods, cycles, viewCycle, reportsByCycle, actions, loadReports, today } = useStore();
   const latestPeriod = [...periods].sort((a, b) => b.label_hijri.localeCompare(a.label_hijri))[0];
   const [next, setNext] = useState(() => (latestPeriod ? nextAcademicLabels(latestPeriod) : { label_masehi: '2026-2027', label_hijri: '1447-1448' }));
   const [editDates, setEditDates] = useState(null);
@@ -176,6 +185,7 @@ export default function Periods({ onOpenCycle }) {
                 <tr>
                   <th className="py-2.5 pl-5 pr-3 font-semibold">Bulan</th>
                   <th className="px-3 py-2.5 font-semibold">Rentang Masehi</th>
+                  <th className="px-3 py-2.5 font-semibold">Input dibuka</th>
                   <th className="px-3 py-2.5 font-semibold">Tenggat</th>
                   <th className="px-3 py-2.5 font-semibold">Masuk</th>
                   <th className="px-3 py-2.5 font-semibold">Status</th>
@@ -190,12 +200,16 @@ export default function Periods({ onOpenCycle }) {
                     <tr key={c.id} className={c.id === viewCycle?.id ? 'bg-sky-wash/60' : ''}>
                       <td className="py-2.5 pl-5 pr-3 font-semibold text-ink">{cycleLabel(c)}</td>
                       <td className="px-3 py-2.5 text-muted tabular-nums">{formatGregorian(c.start_date)} – {formatGregorian(c.end_date)}</td>
+                      <td className="px-3 py-2.5 tabular-nums">
+                        {formatGregorian(cycleOpenDate(c))}
+                        {!isInputOpen(c, today) && <span className="ml-1.5"><Badge tone="warn">belum</Badge></span>}
+                      </td>
                       <td className="px-3 py-2.5 tabular-nums">{formatGregorian(c.deadline_date)}</td>
                       <td className="px-3 py-2.5 tabular-nums">{n == null ? '…' : `${n}/${reps.length}`}</td>
                       <td className="px-3 py-2.5">{c.status === 'aktif' ? <Badge tone="ok">aktif</Badge> : <Badge icon={Archive}>arsip</Badge>}</td>
                       <td className="py-2.5 pl-3 pr-5 text-right">
                         <div className="flex justify-end gap-1">
-                          {c.status === 'aktif' && <Button size="sm" variant="ghost" onClick={() => setEditDates({ ...c })}>Ubah tanggal</Button>}
+                          {c.status === 'aktif' && <Button size="sm" variant="ghost" onClick={() => setEditDates({ ...c, input_open_date: cycleOpenDate(c) })}>Ubah tanggal</Button>}
                           <Button size="sm" variant="ghost" icon={Eye} onClick={() => actions.setViewCycleId(c.id)}>Lihat</Button>
                         </div>
                       </td>
@@ -224,9 +238,11 @@ export default function Periods({ onOpenCycle }) {
               <Button variant="ghost" onClick={() => setEditDates(null)}>Batal</Button>
               <Button
                 variant="primary"
+                disabled={!editDates.input_open_date || editDates.input_open_date > editDates.deadline_date}
                 onClick={async () => {
                   await actions.updateCycleDates(editDates.id, {
                     start_date: editDates.start_date, end_date: editDates.end_date, deadline_date: editDates.deadline_date,
+                    input_open_date: editDates.input_open_date,
                     masehi_label: masehiLabelFor(editDates.start_date, editDates.end_date),
                   });
                   setEditDates(null);
@@ -238,11 +254,19 @@ export default function Periods({ onOpenCycle }) {
           }
         >
           <div className="flex flex-col gap-3">
-            {[['start_date', 'Mulai'], ['end_date', 'Akhir'], ['deadline_date', 'Tenggat (tgl 5)']].map(([k, l]) => (
-              <Field key={k} label={l} hint={formatGregorian(editDates[k], true)}>
+            {[['start_date', 'Mulai'], ['end_date', 'Akhir'], ['input_open_date', 'Input laporan dibuka (bawaan tgl 20)'], ['deadline_date', 'Tenggat (tgl 5)']].map(([k, l]) => (
+              <Field key={k} label={l} hint={k === 'input_open_date' ? `${formatHijri(editDates[k])} · ${formatGregorian(editDates[k], true)}` : formatGregorian(editDates[k], true)}>
                 <Input id={`ed-${k}`} type="date" value={editDates[k]} onChange={(e) => setEditDates((x) => ({ ...x, [k]: e.target.value }))} />
               </Field>
             ))}
+            {editDates.input_open_date > today && (
+              <Button size="sm" variant="ghost" className="self-start" onClick={() => setEditDates((x) => ({ ...x, input_open_date: today }))}>
+                Buka input hari ini
+              </Button>
+            )}
+            {editDates.input_open_date > editDates.deadline_date && (
+              <Callout tone="error">Tanggal buka input tidak boleh melewati tenggat.</Callout>
+            )}
           </div>
         </Modal>
       )}

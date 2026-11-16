@@ -128,6 +128,8 @@ export default function Rundown() {
     buildReminderMessage({
       week: sel, role: r, department: d, cycle: viewCycle, reportCycle: billed || viewCycle,
       reportSubmitted: Boolean(billedMap.get(d.id)?.submitted_at), programs: targetsByDept.get(d.id) || [], portalUrl: PORTAL_URL,
+      prevCycle,
+      prevPending: sel >= 2 && Boolean(prevCycle) && prevReportByDept.has(d.id) && !prevReportByDept.get(d.id)?.submitted_at,
     });
 
   const prepareQueue = async () => {

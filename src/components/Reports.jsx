@@ -1,13 +1,13 @@
-import React, { useMemo, useState } from 'react';
-import { Archive, Eye, FileText, Inbox, Search, Star } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Archive, Eye, FileText, Inbox, Search, Shuffle, Star } from 'lucide-react';
 import { useStore } from '../lib/store.jsx';
-import { cycleLabel, HIJRI_MONTHS, kendalaCategory, nextMonthLabel, programCategory } from '../lib/constants.js';
+import { cycleLabel, cycleMonthName, formatGregorian, HIJRI_MONTHS, kendalaCategory, nextMonthLabel, programCategory } from '../lib/constants.js';
 import { formatTimestamp } from '../lib/hijri.js';
 import { reportState, STATE_META } from '../lib/status.js';
 import { reportDocxBlob, reportDocxFilename } from '../lib/docx-report.js';
 import { buildZip } from '../lib/exports.js';
 import { saveFile } from '../lib/files.js';
-import { Badge, Button, Empty, Input, Modal, Panel, Segmented } from './ui.jsx';
+import { Badge, Button, Callout, Empty, Field, Input, Modal, Panel, Segmented, Select } from './ui.jsx';
 import { ReminderCardModal } from './ReminderCard.jsx';
 
 export function ReportDetail({ report, department, cycle, onClose }) {
@@ -58,12 +58,103 @@ export function ReportDetail({ report, department, cycle, onClose }) {
   );
 }
 
+/** Pindahkan laporan yang masuk ke bulan yang salah (mis. Jumadil Akhir → Jumadil Awal). */
+function MoveReportModal({ report, department, cycle, onClose }) {
+  const { cycles, prevOf, reportsByCycle, loadReports, actions, today } = useStore();
+  const options = useMemo(
+    () => [...cycles].filter((c) => c.id !== cycle.id).sort((a, b) => b.hijri_year - a.hijri_year || b.hijri_month - a.hijri_month),
+    [cycles, cycle.id]
+  );
+  const [target, setTarget] = useState(() => (prevOf(cycle) || options[0])?.id || '');
+  const [swap, setSwap] = useState(false);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (target) loadReports(target);
+    setSwap(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [target]);
+  const tc = cycles.find((c) => c.id === target) || null;
+  const rows = tc ? reportsByCycle[tc.id] : null;
+  const there = rows ? rows.find((r) => r.department_id === department.id) : null;
+  const occupied = Boolean(there?.submitted_at);
+  const late = tc && reportState(report, tc, today) === 'terlambat';
+
+  const confirm = async () => {
+    setBusy(true);
+    try {
+      await actions.moveReport({ report, targetCycle: tc, swap: occupied && swap });
+      actions.notify(
+        occupied
+          ? `Isi laporan ${department.nama} untuk ${cycleLabel(cycle)} dan ${cycleLabel(tc)} sudah ditukar.`
+          : `Laporan ${department.nama} dipindahkan ke ${cycleLabel(tc)}.`
+      );
+      onClose();
+    } catch {
+      /* toast tampil */
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      size="sm"
+      eyebrow="Pindahkan ke bulan lain"
+      title={department.nama}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>Batal</Button>
+          <Button variant="primary" icon={Shuffle} busy={busy} disabled={!tc || !rows || (occupied && !swap)} onClick={confirm}>
+            {occupied ? 'Tukar isi laporan' : 'Pindahkan laporan'}
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-4 text-[13.5px] leading-relaxed">
+        <p className="text-muted">
+          Laporan ini masuk ke <strong className="text-ink">{cycleLabel(cycle)}</strong> ({formatTimestamp(report.submitted_at)}). Pindahkan bila
+          seharusnya untuk bulan lain. Isi, program kerja, tahapan, dan catatan admin ikut pindah; {cycleMonthName(cycle)} kembali berstatus belum lapor.
+        </p>
+        <Field label="Pindahkan ke bulan">
+          <Select id="move-target" value={target} onChange={(e) => setTarget(e.target.value)}>
+            {options.map((c) => (
+              <option key={c.id} value={c.id}>
+                {cycleLabel(c)}
+                {c.status === 'aktif' ? ' · aktif' : ''}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        {tc && !rows && <p className="animate-pulse text-muted">Memeriksa laporan bulan tujuan…</p>}
+        {tc && rows && !occupied && (
+          <Callout tone="info">
+            {department.nama} belum punya laporan di {cycleLabel(tc)}. Waktu kirim tetap {formatTimestamp(report.submitted_at)}
+            {late ? `, jadi tercatat terlambat (tenggat ${formatGregorian(tc.deadline_date)}).` : '.'}
+          </Callout>
+        )}
+        {occupied && (
+          <Callout tone="warn" title={`${cycleLabel(tc)} sudah terisi`}>
+            Bagian ini sudah mengirim laporan {cycleMonthName(tc)} ({formatTimestamp(there.submitted_at)}). Bila keduanya memang tertukar, isi kedua bulan bisa ditukar.
+            <label className="mt-2 flex items-center gap-2 font-semibold text-ink">
+              <input id="move-swap" type="checkbox" className="size-4 accent-[#1D4ED8]" checked={swap} onChange={(e) => setSwap(e.target.checked)} />
+              Tukar isi laporan {cycleMonthName(cycle)} dan {cycleMonthName(tc)}
+            </label>
+          </Callout>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
 export default function Reports() {
   const { viewCycle, period, reports, departments, today, actions } = useStore();
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState('masuk');
   const [card, setCard] = useState(null);
   const [detail, setDetail] = useState(null);
+  const [moving, setMoving] = useState(null);
   const [busy, setBusy] = useState('');
   const deptById = useMemo(() => new Map(departments.map((d) => [d.id, d])), [departments]);
 
@@ -160,6 +251,7 @@ export default function Reports() {
                         <Button size="sm" variant="ghost" icon={Eye} onClick={() => setDetail({ r, d })}>Isi</Button>
                         <Button size="sm" onClick={() => setCard({ r, d })}>Kartu</Button>
                         <Button size="sm" icon={FileText} busy={busy === r.id} onClick={() => downloadOne(r, d)}>.docx</Button>
+                        <Button size="sm" variant="ghost" icon={Shuffle} onClick={() => setMoving({ r, d })}>Pindah bulan</Button>
                       </>
                     )}
                   </div>
@@ -170,6 +262,7 @@ export default function Reports() {
         )}
       </Panel>
       {detail && <ReportDetail report={detail.r} department={detail.d} cycle={viewCycle} onClose={() => setDetail(null)} />}
+      {moving && <MoveReportModal report={moving.r} department={moving.d} cycle={viewCycle} onClose={() => setMoving(null)} />}
       <ReminderCardModal open={Boolean(card)} onClose={() => setCard(null)} report={card?.r} department={card?.d} cycle={viewCycle} />
     </div>
   );

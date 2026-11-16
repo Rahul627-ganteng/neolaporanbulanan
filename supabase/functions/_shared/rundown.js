@@ -196,7 +196,7 @@ export const REMINDER_POLICY = {
  * programs     = Program Kerja Satu Bulan ke Depan dari laporan bulan lalu
  *                (yaitu target bulan berjalan), opsional.
  */
-export function buildReminderMessage({ week, role, department, cycle, reportCycle, reportSubmitted, programs = [], portalUrl = '' }) {
+export function buildReminderMessage({ week, role, department, cycle, reportCycle, reportSubmitted, programs = [], portalUrl = '', prevCycle = null, prevPending = false }) {
   const rd = RUNDOWN.find((r) => r.week === week) || RUNDOWN[0];
   const billed = reportCycle || cycle;
   const nama = role === 'ketua' ? department.ketua_nama : department.sekretaris_nama;
@@ -226,6 +226,18 @@ export function buildReminderMessage({ week, role, department, cycle, reportCycl
   if (week === 3) {
     lines.push('');
     lines.push(`Mohon jadwalkan perkumpulan bagian untuk menyusun program kerja ${nextMonthLabel(cycle)} dan serahkan draf hardfile kepada Pembimbing Guru Senior.`);
+    if (cycle.input_open_date) {
+      lines.push(`Input softfile laporan ${cycleMonthName(cycle)} di portal dibuka ${formatGregorian(cycle.input_open_date, true)}.`);
+    }
+  }
+
+  // Laporan harus berurutan: bulan lalu yang belum terkirim menahan laporan bulan ini.
+  if (week >= 2 && prevPending && prevCycle) {
+    lines.push('');
+    lines.push(
+      `Catatan: laporan bulan ${cycleMonthName(prevCycle)} ${prevCycle.hijri_year} H *belum diinput* (terlambat). ` +
+        `Laporan ${cycleMonthName(cycle)} baru bisa diinput setelah laporan itu terkirim.`
+    );
   }
 
   const targets = programs.filter((p) => p && p.judul);
@@ -312,6 +324,7 @@ export function planReminderQueue({
     if (d.is_active === false) continue;
     const submitted = Boolean(reports?.get(d.id)?.submitted_at);
     if (policy.scope === 'belum' && submitted) continue;
+    const prevPending = !billPrev && Boolean(prevCycle) && Boolean(prevReportByDept?.has(d.id)) && !prevReportByDept.get(d.id)?.submitted_at;
     for (const role of policy.roles) {
       const phone = normalizeWa(role === 'ketua' ? d.ketua_wa : d.sekretaris_wa);
       items.push({
@@ -321,7 +334,7 @@ export function planReminderQueue({
         phone: phone || null,
         message: buildReminderMessage({
           week, role, department: d, cycle, reportCycle: billed, reportSubmitted: submitted,
-          programs: targetsByDept?.get(d.id) || [], portalUrl,
+          programs: targetsByDept?.get(d.id) || [], portalUrl, prevCycle, prevPending,
         }),
       });
     }

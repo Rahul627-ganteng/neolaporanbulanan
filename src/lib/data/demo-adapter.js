@@ -2,9 +2,16 @@
 // (khusus pengguna ini). Antarmukanya identik dengan supabase-adapter.js.
 import { createDemoState, createDemoTeachers, demoUid } from './demo-seed.js';
 import { normalizeWa } from '../constants.js';
-import { todayIso } from '../hijri.js';
+import { cycleKey, cycleOpenDate, formatMasehi, inputOpenDateFor, todayIso } from '../hijri.js';
+import { HIJRI_MONTHS } from '../constants.js';
 
-const KEY = 'kmi-laporan-demo-v4';
+const KEY = 'kmi-laporan-demo-v5';
+const monthName = (c) => `${HIJRI_MONTHS[c.hijri_month - 1]} ${c.hijri_year} H`;
+const CONTENT_KEYS = [
+  'status', 'sekretaris_nama', 'ketua_nama', 'pembimbing_nama', 'hasil_usaha', 'kendala', 'solusi', 'evaluasi_program',
+  'pernyataan_inovatif', 'programs', 'submitted_at', 'rapat_bagian_at', 'draft_senior_at', 'pembimbing_approved_at',
+  'wapeng_received_at', 'catatan_admin', 'catatan_admin_at',
+];
 const clone = (v) => JSON.parse(JSON.stringify(v));
 
 function load() {
@@ -12,7 +19,7 @@ function load() {
     const raw = localStorage.getItem(KEY);
     if (raw) {
       const s = JSON.parse(raw);
-      if (s && s.version === 4) return s;
+      if (s && s.version === 5) return s;
     }
   } catch {
     /* penyimpanan tidak tersedia */
@@ -30,6 +37,16 @@ export function createDemoAdapter() {
     }
   };
   const findReport = (id) => db.reports.find((r) => r.id === id);
+  const outstanding = (departmentId) => {
+    const today = todayIso();
+    const byId = new Map(db.cycles.map((c) => [c.id, c]));
+    return db.reports
+      .filter((r) => r.department_id === departmentId && !r.submitted_at && byId.has(r.cycle_id))
+      .map((r) => byId.get(r.cycle_id))
+      .filter((c) => cycleOpenDate(c) <= today)
+      .sort((a, b) => cycleKey(a) - cycleKey(b))
+      .map((c) => ({ cycle_id: c.id, hijri_month: c.hijri_month, hijri_year: c.hijri_year, deadline_date: c.deadline_date, input_open_date: cycleOpenDate(c) }));
+  };
 
   return {
     mode: 'demo',
@@ -90,7 +107,7 @@ export function createDemoAdapter() {
       persist();
     },
 
-    async openCycle({ period_id, hijri_month, hijri_year, masehi_label, start_date, end_date, deadline_date }) {
+    async openCycle({ period_id, hijri_month, hijri_year, masehi_label, start_date, end_date, deadline_date, input_open_date }) {
       if (db.cycles.some((c) => c.hijri_month === hijri_month && c.hijri_year === hijri_year))
         throw new Error('Periode bulan tersebut sudah pernah dibuka.');
       db.cycles.forEach((c) => {
@@ -103,8 +120,10 @@ export function createDemoAdapter() {
       const cycle = {
         id: demoUid('cyc'), period_id, hijri_month, hijri_year, masehi_label,
         start_date, end_date, deadline_date, status: 'aktif', active_week: null,
+        input_open_date: inputOpenDateFor(hijri_month, hijri_year, deadline_date),
         opened_at: new Date().toISOString(),
       };
+      if (input_open_date) cycle.input_open_date = input_open_date;
       db.cycles.unshift(cycle);
       for (const d of db.departments.filter((x) => x.is_active !== false)) {
         db.reports.push({
@@ -124,7 +143,19 @@ export function createDemoAdapter() {
       persist();
     },
 
-    async submitReport({ cycleId, departmentId, payload }) {
+    async submitReport({ cycleId, departmentId, accessCode, payload }) {
+      // Aturan yang sama dengan submit_report: berlaku untuk akun bagian (admin demo bebas).
+      if (accessCode && db.sessions?.[accessCode] === departmentId) {
+        const cycle = db.cycles.find((c) => c.id === cycleId);
+        const today = todayIso();
+        if (cycle && today < cycleOpenDate(cycle)) {
+          throw new Error(`Input laporan bulan ${monthName(cycle)} baru dibuka ${formatMasehi(cycleOpenDate(cycle))}. Sebelum itu laporan belum bisa dikirim.`);
+        }
+        const block = outstanding(departmentId).find((c) => cycleKey(c) < cycleKey(cycle));
+        if (block) {
+          throw new Error(`Laporan bulan ${monthName(block)} belum dikirim. Selesaikan laporan itu dulu, baru laporan bulan ${monthName(cycle)}.`);
+        }
+      }
       let r = db.reports.find((x) => x.cycle_id === cycleId && x.department_id === departmentId);
       if (!r) {
         r = { id: demoUid('rep'), cycle_id: cycleId, department_id: departmentId };
@@ -154,6 +185,39 @@ export function createDemoAdapter() {
       }
       persist();
       return clone(r);
+    },
+    async reportOutstanding(departmentId) {
+      return outstanding(departmentId).map((c) => ({ ...c, id: c.cycle_id }));
+    },
+    async moveReport({ reportId, targetCycleId, swap = false }) {
+      const s = findReport(reportId);
+      if (!s) throw new Error('Laporan tidak ditemukan');
+      if (!s.submitted_at) throw new Error('Laporan ini belum dikirim, jadi belum ada isi yang bisa dipindahkan');
+      const tc = db.cycles.find((c) => c.id === targetCycleId);
+      if (!tc) throw new Error('Bulan tujuan tidak ditemukan');
+      if (tc.id === s.cycle_id) throw new Error('Bulan tujuan sama dengan bulan laporan ini');
+      let t = db.reports.find((r) => r.cycle_id === targetCycleId && r.department_id === s.department_id);
+      if (!t) {
+        const d = db.departments.find((x) => x.id === s.department_id) || {};
+        t = {
+          id: demoUid('rep'), cycle_id: targetCycleId, department_id: s.department_id, status: 'belum_lapor',
+          sekretaris_nama: d.sekretaris_nama, ketua_nama: d.ketua_nama, pembimbing_nama: d.pembimbing_nama,
+          hasil_usaha: [], kendala: [], solusi: [], programs: [], evaluasi_program: [], pernyataan_inovatif: false,
+          submitted_at: null, rapat_bagian_at: null, draft_senior_at: null, pembimbing_approved_at: null,
+          wapeng_received_at: null, catatan_admin: '', catatan_admin_at: null,
+        };
+        db.reports.push(t);
+      }
+      const swapped = Boolean(t.submitted_at);
+      if (swapped && !swap) {
+        throw new Error(`Bagian ini sudah punya laporan terkirim di bulan ${monthName(tc)}. Pilih tukar isi bila keduanya memang tertukar.`);
+      }
+      const a = Object.fromEntries(CONTENT_KEYS.map((k) => [k, s[k] ?? null]));
+      const b = Object.fromEntries(CONTENT_KEYS.map((k) => [k, t[k] ?? null]));
+      Object.assign(t, a);
+      Object.assign(s, b, { hasil_usaha: b.hasil_usaha || [], kendala: b.kendala || [], solusi: b.solusi || [], programs: b.programs || [], evaluasi_program: b.evaluasi_program || [] });
+      persist();
+      return { report_id: t.id, cycle_id: t.cycle_id, from_cycle_id: s.cycle_id, swapped };
     },
     async setStage(reportId, key, on) {
       const r = findReport(reportId);

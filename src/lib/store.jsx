@@ -275,6 +275,15 @@ export function StoreProvider({ children }) {
       return r;
     }),
 
+    /** Bulan yang belum dilaporkan sebuah bagian (tanpa toast; dipakai formulir & dasbor). */
+    loadOutstanding: (departmentId) => (adapter && departmentId ? adapter.reportOutstanding(departmentId) : Promise.resolve([])),
+    moveReport: ({ report, targetCycle, swap = false }) => run(async () => {
+      const res = await adapter.moveReport({ reportId: report.id, targetCycleId: targetCycle.id, swap });
+      await Promise.all([reloadCycle(report.cycle_id), reloadCycle(targetCycle.id)]);
+      if (departmentData[report.department_id]) loadDepartmentData(report.department_id, true).catch(() => {});
+      return res;
+    }),
+
     // ----- akun bagian -----
     bagianLogin: (departmentId, password, remember = true) => run(async () => {
       const s = await adapter.departmentLogin(departmentId, password);

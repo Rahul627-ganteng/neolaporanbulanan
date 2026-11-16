@@ -7,7 +7,7 @@ import { useStore } from '../lib/store.jsx';
 import {
   computeWeek, cycleLabel, cycleMonthName, daysBetween, deadlineText, kendalaCategory, nextMonthLabel, PROGRAM_CATEGORIES, programCategory, RUNDOWN, STAGES,
 } from '../lib/constants.js';
-import { formatTimestamp, inCollectionWindow, isoOfTimestamp } from '../lib/hijri.js';
+import { cycleKey, formatTimestamp, inCollectionWindow, inputOpenText, isInputOpen, isoOfTimestamp } from '../lib/hijri.js';
 import { reportState, STATE_META } from '../lib/status.js';
 import { evalScore, evalStatus } from '../lib/evaluasi.js';
 import { reportDocxBlob, reportDocxFilename } from '../lib/docx-report.js';
@@ -54,8 +54,9 @@ function ChartTooltip({ active, payload, label }) {
 }
 
 // ------------------------------------------------------------------ headline rundown
-function Headline({ cycle, report, today, go, canSubmit }) {
+function Headline({ cycle, report, today, go, canSubmit, owed }) {
   const collecting = inCollectionWindow(cycle, today) && !cycle.active_week;
+  const open = isInputOpen(cycle, today);
   const week = computeWeek(cycle, today);
   const left = daysBetween(today, cycle.deadline_date);
   const month = cycleMonthName(cycle);
@@ -81,6 +82,8 @@ function Headline({ cycle, report, today, go, canSubmit }) {
     title = `${agenda.title} · ${month} ${cycle.hijri_year} H`;
     text = `Laksanakan dan pantau program kerja ${month}. Laporan bulan ini dikumpulkan sampai ${deadlineText(cycle)}.`;
   }
+  if (!sent && !open) text += ` Input softfile dibuka ${inputOpenText(cycle)}.`;
+  if (!sent && owed) text += ` Laporan ${cycleMonthName(owed)} ${owed.hijri_year} H harus terkirim dulu.`;
 
   return (
     <section
@@ -106,10 +109,15 @@ function Headline({ cycle, report, today, go, canSubmit }) {
               Tenggat {left > 0 ? `${left} hari lagi` : left === 0 ? 'hari ini' : `lewat ${-left} hari`}
             </span>
           )}
-          {canSubmit && (
+          {canSubmit && (open || owed) && (
             <Button variant="secondary" icon={FileEdit} onClick={() => go('input')} className="self-start lg:self-end">
-              {sent ? 'Perbarui laporan' : 'Isi laporan'}
+              {owed && !sent ? `Isi laporan ${cycleMonthName(owed)} dulu` : sent ? 'Perbarui laporan' : 'Isi laporan'}
             </Button>
+          )}
+          {!sent && !open && (
+            <span className="inline-flex items-center gap-1.5 self-start rounded-full bg-white/15 px-3 py-1 text-[12.5px] font-semibold text-white ring-1 ring-white/30 lg:self-end">
+              Input dibuka {inputOpenText(cycle).replace(/ \(.*\)$/, '')}
+            </span>
           )}
         </div>
       </div>
@@ -379,7 +387,7 @@ function ContactPanel({ dept, canEdit, isAdmin }) {
 
 // ------------------------------------------------------------------ halaman
 export default function BagianDashboard({ go }) {
-  const { bagian, isAdmin, activeDepartments, cycles, periods, activeCycle, prevOf, today, actions, departmentData, dashboardDeptId } = useStore();
+  const { bagian, isAdmin, activeDepartments, cycles, periods, activeCycle, today, actions, departmentData, dashboardDeptId } = useStore();
   const ownId = bagian?.department.id || null;
   const deptId = isAdmin ? dashboardDeptId || ownId || activeDepartments[0]?.id : ownId;
   const data = deptId ? departmentData[deptId] : null;
@@ -456,8 +464,13 @@ export default function BagianDashboard({ go }) {
 
   const dept = data?.department || activeDepartments.find((d) => d.id === deptId) || {};
   const current = activeCycle ? reports.find((r) => r.cycle_id === activeCycle.id) : null;
-  const prevActive = activeCycle ? prevOf(activeCycle) : null;
-  const prevReport = prevActive ? reports.find((r) => r.cycle_id === prevActive.id) : null;
+  // Bulan sebelumnya yang sudah dibuka tetapi belum terkirim (urut dari yang terlama).
+  const owed = activeCycle
+    ? reports
+        .filter((r) => !r.submitted_at && isInputOpen(r.cycle, today) && cycleKey(r.cycle) < cycleKey(activeCycle))
+        .map((r) => r.cycle)
+        .sort((a, b) => cycleKey(a) - cycleKey(b))
+    : [];
   const viewingOwn = Boolean(ownId) && ownId === deptId;
 
   const download = async (r) => {
@@ -504,13 +517,19 @@ export default function BagianDashboard({ go }) {
 
       {err && <Callout tone="error">{err}</Callout>}
 
-      {activeCycle && <Headline cycle={activeCycle} report={current} today={today} go={go} canSubmit={viewingOwn || isAdmin} />}
-
-      {prevReport && !prevReport.submitted_at && (
-        <Callout tone="warn" title={`Laporan ${cycleLabel(prevActive)} belum terkirim`}>
-          Masih bisa dikirim lewat menu Input Laporan (pilih bulan {cycleMonthName(prevActive)}); laporan tercatat terlambat.
+      {owed.length > 0 && (
+        <Callout tone="warn" title={`Laporan ${owed.map((c) => cycleLabel(c)).join(', ')} belum terkirim`}>
+          Laporan diisi berurutan: laporan {cycleMonthName(activeCycle)} baru bisa dikirim setelah laporan {owed.map((c) => cycleMonthName(c)).join(' dan ')} masuk.
+          Buka Input Laporan; formulir otomatis membuka bulan yang tertunggak (tercatat terlambat bila lewat tenggat).
+          {(viewingOwn || isAdmin) && (
+            <div className="mt-2">
+              <Button size="sm" variant="primary" icon={FileEdit} onClick={() => go('input')}>Isi laporan {cycleMonthName(owed[0])}</Button>
+            </div>
+          )}
         </Callout>
       )}
+
+      {activeCycle && <Headline cycle={activeCycle} report={current} today={today} go={go} canSubmit={viewingOwn || isAdmin} owed={owed[0] || null} />}
 
       {!data && !err ? (
         <p className="animate-pulse text-[14px] text-muted">Memuat data bagian…</p>

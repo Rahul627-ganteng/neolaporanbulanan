@@ -2,7 +2,7 @@
 // di sini fiktif dan hanya untuk memperlihatkan alur; nomor WA sengaja kosong
 // agar tombol pengingat tidak pernah mengirim ke nomor orang sungguhan.
 import { DEPARTMENT_NAMES, prevHijriMonth } from '../constants.js';
-import { academicYearFor, addDays, hijriMonthRange, masehiLabelFor, toHijri } from '../hijri.js';
+import { academicYearFor, addDays, hijriMonthRange, inputOpenDateFor, masehiLabelFor, toHijri } from '../hijri.js';
 
 function rng(seed) {
   let a = seed >>> 0;
@@ -216,6 +216,7 @@ function makeCycle(month, year, periodId, status) {
     start_date: r.start,
     end_date: r.end,
     deadline_date: r.deadline,
+    input_open_date: inputOpenDateFor(month, year, r.deadline),
     status,
     active_week: null,
     opened_at: `${r.start}T07:00:00+07:00`,
@@ -274,11 +275,13 @@ export function createDemoState(today) {
   // Bulan berjalan: sebagian sudah menginput softfile.
   const dayIndex = Math.max(0, Math.round((Date.parse(today) - Date.parse(cycle.start_date)) / 86400000));
   const lastDay = Math.max(0, Math.min(dayIndex, 33));
-  const firstDay = Math.min(21, lastDay);
-  const pSubmit = dayIndex >= 21 ? 0.6 : 0.12;
+  const firstDay = Math.min(19, lastDay);
+  // Input bulan berjalan baru dibuka tanggal 20, dan hanya untuk bagian yang laporan bulan lalunya sudah masuk.
+  const open = today >= cycle.input_open_date;
+  const pSubmit = dayIndex >= 21 ? 0.6 : 0.3;
   for (const d of departments) {
     const r = rand();
-    const submitted = r < pSubmit;
+    const submitted = open && !prevLate.has(d.no) && r < pSubmit;
     const iso = addDays(cycle.start_date, firstDay + Math.floor(rand() * (lastDay - firstDay + 1)));
     const stages = submitted
       ? { rapat: true, draft: true, approved: true, wapeng: rand() < 0.45 }
@@ -315,7 +318,7 @@ export function createDemoState(today) {
   }
 
   return {
-    version: 4,
+    version: 5,
     seededFor: today,
     periods,
     cycles: [cycle, prevCycle],
