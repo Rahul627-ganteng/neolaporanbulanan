@@ -10,7 +10,7 @@ const monthName = (c) => `${HIJRI_MONTHS[c.hijri_month - 1]} ${c.hijri_year} H`;
 const CONTENT_KEYS = [
   'status', 'sekretaris_nama', 'ketua_nama', 'pembimbing_nama', 'hasil_usaha', 'kendala', 'solusi', 'evaluasi_program',
   'pernyataan_inovatif', 'programs', 'submitted_at', 'rapat_bagian_at', 'draft_senior_at', 'pembimbing_approved_at',
-  'wapeng_received_at', 'catatan_admin', 'catatan_admin_at',
+  'wapeng_received_at', 'catatan_admin', 'catatan_admin_at', 'softfile_manual',
 ];
 const clone = (v) => JSON.parse(JSON.stringify(v));
 
@@ -202,6 +202,7 @@ export function createDemoAdapter() {
       const now = new Date().toISOString();
       Object.assign(r, {
         status: 'terkirim',
+        softfile_manual: false,
         sekretaris_nama: payload.sekretaris_nama,
         ketua_nama: payload.ketua_nama,
         pembimbing_nama: payload.pembimbing_nama,
@@ -256,6 +257,13 @@ export function createDemoAdapter() {
       Object.assign(s, b, { hasil_usaha: b.hasil_usaha || [], kendala: b.kendala || [], solusi: b.solusi || [], programs: b.programs || [], evaluasi_program: b.evaluasi_program || [] });
       persist();
       return { report_id: t.id, cycle_id: t.cycle_id, from_cycle_id: s.cycle_id, swapped };
+    },
+    async setSoftfileManual(reportId, on) {
+      const r = findReport(reportId);
+      if (!r) return;
+      if (on && !r.submitted_at) Object.assign(r, { submitted_at: new Date().toISOString(), status: 'terkirim', softfile_manual: true });
+      if (!on && r.softfile_manual) Object.assign(r, { submitted_at: null, status: 'belum_lapor', softfile_manual: false });
+      persist();
     },
     async setStage(reportId, key, on) {
       const r = findReport(reportId);

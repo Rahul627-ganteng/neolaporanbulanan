@@ -246,6 +246,7 @@ export default function Reports() {
                   <div className="flex shrink-0 flex-wrap items-center gap-2 pl-9 sm:pl-0">
                     {ung > 0 && <Badge tone="brand" icon={Star}>{ung} unggulan</Badge>}
                     <Badge tone={STATE_META[st].tone}>{STATE_META[st].label}</Badge>
+                    {r.softfile_manual && <Badge tone="muted">hardfile saja · dicentang admin</Badge>}
                     {r.submitted_at && (
                       <>
                         <Button size="sm" variant="ghost" icon={Eye} onClick={() => setDetail({ r, d })}>Isi</Button>

@@ -243,10 +243,13 @@ export default function Rundown() {
                         </td>
                         <td className="px-2 py-2.5">
                           <Badge tone={STATE_META[st].tone}>{STATE_META[st].label}</Badge>
+                          {rep?.softfile_manual && <span className="mt-1 block text-[11.5px] font-semibold text-muted">hardfile saja</span>}
                         </td>
                         {STAGES.map((s) => {
                           const on = Boolean(rep?.[s.key]);
-                          const locked = s.key === 'submitted_at' || !rep;
+                          // Softfile: admin boleh mencentang untuk bagian yang baru menyerahkan hardfile.
+                          const soft = s.key === 'submitted_at';
+                          const locked = !rep || (soft && Boolean(rep.submitted_at) && !rep.softfile_manual);
                           return (
                             <td key={s.key} className="px-1.5 py-2.5 text-center">
                               <input
@@ -255,7 +258,8 @@ export default function Rundown() {
                                 checked={on}
                                 disabled={locked}
                                 aria-label={`${s.label} — ${d.nama}`}
-                                onChange={(e) => actions.setStage(rep, s.key, e.target.checked)}
+                                title={soft ? (rep?.softfile_manual ? 'Dicentang admin (hardfile). Hapus centang untuk membatalkan.' : rep?.submitted_at ? 'Softfile diinput bagian' : 'Centang bila bagian sudah menyerahkan hardfile tetapi belum menginput softfile') : undefined}
+                                onChange={(e) => (soft ? actions.setSoftfileManual(rep, e.target.checked) : actions.setStage(rep, s.key, e.target.checked))}
                               />
                             </td>
                           );

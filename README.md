@@ -7,6 +7,8 @@ Sistem informasi pelaporan bulanan untuk 49 bagian Sektor Guru KMI: formulir sof
 
 **Kelola bulan (Periode & Admin).** Tiap bulan berstatus *aktif* (bulan berjalan; hanya satu), *belum aktif* (disiapkan admin, aktif otomatis saat waktunya), atau *arsip*. Admin bisa **Jadikan aktif** bulan mana pun, **Buka untuk bagian / Hanya admin** per bulan (bulan *hanya admin* — mis. bulan lama yang terlambat — hanya bisa diinput admin dan tidak menahan bulan berikutnya), dan **Hapus** bulan yang tidak aktif beserta laporannya (permanen, dengan konfirmasi).
 
+**Softfile dicentang admin.** Di **Rundown & Pengingat**, kolom *Softfile* bisa dicentang admin untuk bagian yang sudah menyerahkan hardfile tetapi belum bisa menginput softfile. Bagian itu dihitung sudah lapor (tidak masuk rekap Belum Lapor, tidak menahan bulan berikutnya) dan ditandai *hardfile saja*. Centang bisa dibatalkan; softfile yang diinput bagian sendiri tidak bisa dibatalkan dari sini. Bila bagian kemudian menginput softfile, tandanya hilang.
+
 **Berurutan.** Bagian tidak bisa mengirim laporan bulan M+1 selama laporan bulan M (atau bulan lain yang lebih awal dan sudah dibuka) belum terkirim. Formulir otomatis membuka bulan yang tertunggak dan dasbor bagian menampilkan peringatannya. Admin tidak terkena aturan ini, dan bisa memindahkan laporan yang masuk ke bulan yang salah (**Laporan Masuk → Pindah bulan**, RPC `move_report`).
 
 | Mode | Kapan aktif | Penyimpanan |
@@ -38,6 +40,7 @@ supabase/
     20261114150000_sekwapeng_pembimbing.sql         bagian Sekretaris Wakil Pengasuh (no. 4) & daftar Pembimbing
     20261116090000_laporan_berurutan_buka_tgl20.sql input dibuka tgl 20, laporan berurutan, pindah laporan ke bulan lain
     20261116103000_kelola_bulan.sql                 jadikan aktif, buka/tutup input, hapus bulan, siapkan bulan belum aktif
+    20261116150000_softfile_dicentang_admin.sql     admin mencentang Softfile untuk bagian yang baru menyerahkan hardfile
   functions/
     _shared/rundown.js              aturan rundown & template WA (dipakai frontend + Edge Function)
     _shared/hijri.js                kalender Hijriah (Umm al-Qura) & rencana pembukaan periode

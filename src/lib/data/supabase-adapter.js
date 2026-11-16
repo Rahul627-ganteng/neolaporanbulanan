@@ -175,6 +175,14 @@ export function createSupabaseAdapter() {
     async moveReport({ reportId, targetCycleId, swap = false }) {
       return must(await sb.rpc('move_report', { p_report_id: reportId, p_target_cycle_id: targetCycleId, p_swap: swap }));
     },
+    /** Softfile dicentang admin: bagian sudah menyerahkan hardfile tetapi belum menginput softfile. */
+    async setSoftfileManual(reportId, on) {
+      const q = sb
+        .from('monthly_reports')
+        .update(on ? { submitted_at: new Date().toISOString(), status: 'terkirim', softfile_manual: true } : { submitted_at: null, status: 'belum_lapor', softfile_manual: false })
+        .eq('id', reportId);
+      must(await (on ? q.is('submitted_at', null) : q.eq('softfile_manual', true)));
+    },
     async setStage(reportId, key, on) {
       must(await sb.from('monthly_reports').update({ [key]: on ? new Date().toISOString() : null }).eq('id', reportId));
     },

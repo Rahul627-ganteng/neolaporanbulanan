@@ -128,6 +128,7 @@ const NOTES = {
   'supabase/migrations/20261114150000_sekwapeng_pembimbing.sql': 'Bagian Sekretaris Wakil Pengasuh & daftar Pembimbing',
   'supabase/migrations/20261116090000_laporan_berurutan_buka_tgl20.sql': 'Input dibuka tgl 20, laporan berurutan, pindah bulan',
   'supabase/migrations/20261116103000_kelola_bulan.sql': 'Aktifkan, buka/tutup input, hapus bulan',
+  'supabase/migrations/20261116150000_softfile_dicentang_admin.sql': 'Softfile dicentang admin (hardfile saja)',
   'supabase/functions/_shared/rundown.js': 'Aturan rundown & template WA (bersama)',
   '.github/workflows/deploy.yml': 'CI/CD: build → migrasi → deploy',
   'netlify.toml': 'Build, SPA redirect, header, env',

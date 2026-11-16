@@ -377,6 +377,10 @@ export function StoreProvider({ children }) {
       await adapter.setReportFeedback(report.id, catatan);
       await loadDepartmentData(report.department_id, true);
     }, catatan.trim() ? 'Catatan untuk bagian tersimpan.' : 'Catatan dihapus.'),
+    setSoftfileManual: (report, on) => run(async () => {
+      await adapter.setSoftfileManual(report.id, on);
+      await reloadCycle(report.cycle_id);
+    }, on ? 'Softfile dicentang admin: bagian ini dihitung sudah lapor (hardfile).' : 'Centang softfile dibatalkan; bagian kembali belum lapor.'),
     setStage: (report, key, on) => run(async () => {
       await adapter.setStage(report.id, key, on);
       setReportsByCycle((m) => ({
