@@ -336,7 +336,7 @@ export default function ReportForm({ go }) {
               Berisi hasil usaha selama {cycleMonthName(cycle)} dan program kerja {nextMonthLabel(cycle)}. Dikumpulkan di akhir{' '}
               {cycleMonthName(cycle)} sampai {deadlineText(cycle)}
               {today > cycle.deadline_date ? '; laporan yang masuk sekarang tercatat terlambat.' : '.'}
-              {notOpen && <> Input softfile dibuka {inputOpenText(cycle)}.</>}
+              {notOpen && (cycle.input_closed_at ? <> Input bulan ini sedang ditutup admin.</> : <> Input softfile dibuka {inputOpenText(cycle)}.</>)}
             </Callout>
             {switched && !isAdmin && switched.to.id === cycle.id && (
               <Callout tone="warn" title={`Selesaikan dulu laporan ${cycleLabel(switched.to)}`}>
@@ -363,7 +363,7 @@ export default function ReportForm({ go }) {
                   {openCycles.map((c) => (
                     <option key={c.id} value={c.id}>
                       {cycleLabel(c)}
-                      {c.status === 'arsip' ? (today > c.deadline_date ? ' · terlambat' : ' · bulan lalu') : !isInputOpen(c, today) ? ' · belum dibuka' : ''}
+                      {c.input_closed_at ? ' · ditutup' : c.status === 'arsip' ? (today > c.deadline_date ? ' · terlambat' : ' · bulan lalu') : !isInputOpen(c, today) ? ' · belum dibuka' : ''}
                     </option>
                   ))}
                 </Select>
@@ -453,11 +453,15 @@ export default function ReportForm({ go }) {
               <div className="flex items-start gap-3 rounded-xl border border-line bg-mist px-4 py-4 text-[13.5px] leading-relaxed text-ink">
                 <Lock className="mt-0.5 size-5 shrink-0 text-brand" aria-hidden />
                 <div className="flex flex-col gap-1.5">
-                  <p className="font-semibold">Input laporan {cycleLabel(cycle)} belum dibuka</p>
+                  <p className="font-semibold">Input laporan {cycleLabel(cycle)} {cycle.input_closed_at ? 'sedang ditutup admin' : 'belum dibuka'}</p>
+                  {cycle.input_closed_at ? (
+                    <p className="text-muted">Hubungi admin Sektor Guru KMI bila laporan bulan ini masih perlu dikirim.</p>
+                  ) : (
                   <p className="text-muted">
                     Softfile laporan {cycleMonthName(cycle)} bisa dikirim mulai <strong className="text-ink">{inputOpenText(cycle)}</strong> sampai{' '}
                     {deadlineText(cycle)}. Sementara itu laksanakan program kerja, rapat bagian, dan serahkan draf hardfile ke Pembimbing.
                   </p>
+                  )}
                   {!form.department_id && (
                     <p className="text-muted">Bagian yang laporan bulan sebelumnya belum terkirim: pilih nama bagian, formulir akan beralih ke laporan yang tertunggak.</p>
                   )}

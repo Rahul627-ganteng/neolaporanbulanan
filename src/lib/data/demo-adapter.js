@@ -43,7 +43,7 @@ export function createDemoAdapter() {
     return db.reports
       .filter((r) => r.department_id === departmentId && !r.submitted_at && byId.has(r.cycle_id))
       .map((r) => byId.get(r.cycle_id))
-      .filter((c) => cycleOpenDate(c) <= today)
+      .filter((c) => !c.input_closed_at && cycleOpenDate(c) <= today)
       .sort((a, b) => cycleKey(a) - cycleKey(b))
       .map((c) => ({ cycle_id: c.id, hijri_month: c.hijri_month, hijri_year: c.hijri_year, deadline_date: c.deadline_date, input_open_date: cycleOpenDate(c) }));
   };
@@ -107,19 +107,22 @@ export function createDemoAdapter() {
       persist();
     },
 
-    async openCycle({ period_id, hijri_month, hijri_year, masehi_label, start_date, end_date, deadline_date, input_open_date }) {
+    async openCycle({ period_id, hijri_month, hijri_year, masehi_label, start_date, end_date, deadline_date, input_open_date, activate = true }) {
       if (db.cycles.some((c) => c.hijri_month === hijri_month && c.hijri_year === hijri_year))
         throw new Error('Periode bulan tersebut sudah pernah dibuka.');
-      db.cycles.forEach((c) => {
-        if (c.status === 'aktif') {
-          c.status = 'arsip';
-          c.archived_at = new Date().toISOString();
-        }
-      });
-      db.periods.forEach((p) => (p.is_active = p.id === period_id));
+      if (activate) {
+        db.cycles.forEach((c) => {
+          if (c.status === 'aktif') {
+            c.status = 'arsip';
+            c.archived_at = new Date().toISOString();
+          }
+        });
+        db.periods.forEach((p) => (p.is_active = p.id === period_id));
+      }
       const cycle = {
         id: demoUid('cyc'), period_id, hijri_month, hijri_year, masehi_label,
-        start_date, end_date, deadline_date, status: 'aktif', active_week: null,
+        start_date, end_date, deadline_date, status: activate ? 'aktif' : 'arsip', active_week: null,
+        activated_at: activate ? new Date().toISOString() : null, input_closed_at: null,
         input_open_date: inputOpenDateFor(hijri_month, hijri_year, deadline_date),
         opened_at: new Date().toISOString(),
       };
@@ -137,6 +140,38 @@ export function createDemoAdapter() {
       persist();
       return cycle.id;
     },
+    async activateCycle(cycleId) {
+      const c = db.cycles.find((x) => x.id === cycleId);
+      if (!c) throw new Error('Bulan tidak ditemukan');
+      const now = new Date().toISOString();
+      db.cycles.forEach((x) => {
+        if (x.status === 'aktif' && x.id !== cycleId) Object.assign(x, { status: 'arsip', archived_at: now });
+      });
+      Object.assign(c, { status: 'aktif', archived_at: null, activated_at: now });
+      db.periods.forEach((p) => (p.is_active = p.id === c.period_id));
+      persist();
+    },
+    async setCycleInput(cycleId, open) {
+      const c = db.cycles.find((x) => x.id === cycleId);
+      if (!c) throw new Error('Bulan tidak ditemukan');
+      if (open) {
+        c.input_closed_at = null;
+        const today = todayIso();
+        if (cycleOpenDate(c) > today) c.input_open_date = today;
+      } else c.input_closed_at = c.input_closed_at || new Date().toISOString();
+      persist();
+    },
+    async deleteCycle(cycleId) {
+      const c = db.cycles.find((x) => x.id === cycleId);
+      if (!c) throw new Error('Bulan tidak ditemukan');
+      if (c.status === 'aktif') throw new Error(`Bulan ${monthName(c)} sedang aktif. Jadikan bulan lain aktif dulu sebelum menghapusnya.`);
+      const sent = db.reports.filter((r) => r.cycle_id === cycleId && r.submitted_at).length;
+      db.cycles = db.cycles.filter((x) => x.id !== cycleId);
+      db.reports = db.reports.filter((r) => r.cycle_id !== cycleId);
+      db.queue = db.queue.filter((q) => q.cycle_id !== cycleId);
+      persist();
+      return { deleted: cycleId, laporan_terhapus: sent };
+    },
     async updateCycle(cycleId, patch) {
       const c = db.cycles.find((x) => x.id === cycleId);
       if (c) Object.assign(c, patch);
@@ -148,6 +183,9 @@ export function createDemoAdapter() {
       if (accessCode && db.sessions?.[accessCode] === departmentId) {
         const cycle = db.cycles.find((c) => c.id === cycleId);
         const today = todayIso();
+        if (cycle?.input_closed_at) {
+          throw new Error(`Input laporan bulan ${monthName(cycle)} sedang ditutup admin. Hubungi admin Sektor Guru KMI.`);
+        }
         if (cycle && today < cycleOpenDate(cycle)) {
           throw new Error(`Input laporan bulan ${monthName(cycle)} baru dibuka ${formatMasehi(cycleOpenDate(cycle))}. Sebelum itu laporan belum bisa dikirim.`);
         }

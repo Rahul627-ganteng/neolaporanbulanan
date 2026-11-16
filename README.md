@@ -5,6 +5,8 @@ Sistem informasi pelaporan bulanan untuk 49 bagian Sektor Guru KMI: formulir sof
 
 **Alur laporan.** Laporan bulan M berisi *hasil usaha selama bulan M* dan *program kerja bulan M+1*. Laporan dikerjakan di akhir bulan M (Minggu 3–4) dan dikumpulkan paling lambat **tanggal 5 bulan M+1**. Siklus M tetap aktif sampai tenggat itu; sehari setelahnya Edge Function membuka siklus M+1 otomatis (rundown berjalan), tetapi **input softfile-nya baru dibuka tanggal 20 Hijriah** (`input_open_date`, bisa diubah admin per bulan). Laporan M yang terlambat tetap diterima dan ditandai *terlambat*.
 
+**Kelola bulan (Periode & Admin).** Tiap bulan berstatus *aktif* (bulan berjalan; hanya satu), *belum aktif* (disiapkan admin, aktif otomatis saat waktunya), atau *arsip*. Admin bisa **Jadikan aktif** bulan mana pun, **Buka/Tutup input** per bulan (bulan yang ditutup tidak bisa dikirim bagian dan tidak menahan bulan berikutnya), dan **Hapus** bulan yang tidak aktif beserta laporannya (permanen, dengan konfirmasi).
+
 **Berurutan.** Bagian tidak bisa mengirim laporan bulan M+1 selama laporan bulan M (atau bulan lain yang lebih awal dan sudah dibuka) belum terkirim. Formulir otomatis membuka bulan yang tertunggak dan dasbor bagian menampilkan peringatannya. Admin tidak terkena aturan ini, dan bisa memindahkan laporan yang masuk ke bulan yang salah (**Laporan Masuk → Pindah bulan**, RPC `move_report`).
 
 | Mode | Kapan aktif | Penyimpanan |
@@ -35,6 +37,7 @@ supabase/
     20261114140000_kode_awal_profil_bagian.sql      kode awal bersama, login pertama, kode tercatat untuk admin
     20261114150000_sekwapeng_pembimbing.sql         bagian Sekretaris Wakil Pengasuh (no. 4) & daftar Pembimbing
     20261116090000_laporan_berurutan_buka_tgl20.sql input dibuka tgl 20, laporan berurutan, pindah laporan ke bulan lain
+    20261116103000_kelola_bulan.sql                 jadikan aktif, buka/tutup input, hapus bulan, siapkan bulan belum aktif
   functions/
     _shared/rundown.js              aturan rundown & template WA (dipakai frontend + Edge Function)
     _shared/hijri.js                kalender Hijriah (Umm al-Qura) & rencana pembukaan periode

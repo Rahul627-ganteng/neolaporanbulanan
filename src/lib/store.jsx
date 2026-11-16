@@ -247,9 +247,32 @@ export function StoreProvider({ children }) {
       await refreshBase();
       setViewCycleId(id);
       await reloadCycle(id);
-      setQueue([]);
+      if (c.activate !== false) setQueue([]);
       return id;
-    }, 'Periode bulan baru dibuka. Status semua bagian telah direset dan bulan sebelumnya diarsipkan.'),
+    }, c.activate === false
+      ? 'Bulan baru disiapkan (belum aktif). Aktifkan dari tabel bila sudah waktunya, atau biarkan terbuka otomatis.'
+      : 'Periode bulan baru dibuka. Status semua bagian telah direset dan bulan sebelumnya diarsipkan.'),
+    activateCycle: (c) => run(async () => {
+      await adapter.activateCycle(c.id);
+      await refreshBase();
+      setViewCycleId(c.id);
+      await reloadCycle(c.id);
+    }, null),
+    setCycleInput: (c, open) => run(async () => {
+      await adapter.setCycleInput(c.id, open);
+      await refreshBase();
+    }, null),
+    deleteCycle: (c) => run(async () => {
+      const res = await adapter.deleteCycle(c.id);
+      const b = await refreshBase();
+      setReportsByCycle((m) => {
+        const next = { ...m };
+        delete next[c.id];
+        return next;
+      });
+      if (viewCycleId === c.id) setViewCycleId(b.cycles.find((x) => x.status === 'aktif')?.id || b.cycles[0]?.id || null);
+      return res;
+    }, null),
     setCycleWeek: (cycleId, w) => run(async () => {
       await adapter.updateCycle(cycleId, { active_week: w });
       await refreshBase();

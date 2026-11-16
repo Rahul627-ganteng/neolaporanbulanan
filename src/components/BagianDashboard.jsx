@@ -82,7 +82,7 @@ function Headline({ cycle, report, today, go, canSubmit, owed }) {
     title = `${agenda.title} · ${month} ${cycle.hijri_year} H`;
     text = `Laksanakan dan pantau program kerja ${month}. Laporan bulan ini dikumpulkan sampai ${deadlineText(cycle)}.`;
   }
-  if (!sent && !open) text += ` Input softfile dibuka ${inputOpenText(cycle)}.`;
+  if (!sent && !open) text += cycle.input_closed_at ? ' Input bulan ini sedang ditutup admin.' : ` Input softfile dibuka ${inputOpenText(cycle)}.`;
   if (!sent && owed) text += ` Laporan ${cycleMonthName(owed)} ${owed.hijri_year} H harus terkirim dulu.`;
 
   return (
@@ -116,7 +116,7 @@ function Headline({ cycle, report, today, go, canSubmit, owed }) {
           )}
           {!sent && !open && (
             <span className="inline-flex items-center gap-1.5 self-start rounded-full bg-white/15 px-3 py-1 text-[12.5px] font-semibold text-white ring-1 ring-white/30 lg:self-end">
-              Input dibuka {inputOpenText(cycle).replace(/ \(.*\)$/, '')}
+              {cycle.input_closed_at ? 'Input ditutup admin' : `Input dibuka ${inputOpenText(cycle).replace(/ \(.*\)$/, '')}`}
             </span>
           )}
         </div>

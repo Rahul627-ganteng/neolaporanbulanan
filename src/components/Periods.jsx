@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Archive, CalendarPlus, CalendarRange, CheckCircle2, Eye, Plus, RefreshCw } from 'lucide-react';
+import { Archive, CalendarPlus, CalendarRange, CheckCircle2, Eye, Lock, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { useStore } from '../lib/store.jsx';
 import { cycleLabel, deadlineText, formatGregorian, HIJRI_MONTHS, nextHijriMonth } from '../lib/constants.js';
-import { academicYearFor, cycleOpenDate, formatHijri, hijriMonthRange, inputOpenDateFor, isInputOpen, masehiLabelFor, nextAcademicLabels, toHijri } from '../lib/hijri.js';
+import { academicYearFor, cycleOpenDate, cycleStateOf, formatHijri, hijriMonthRange, inputOpenDateFor, isInputOpen, masehiLabelFor, nextAcademicLabels, toHijri } from '../lib/hijri.js';
 import { Badge, Button, Callout, Empty, Field, Input, Modal, Panel, Select } from './ui.jsx';
 import AdminAccounts from './AdminAccounts.jsx';
 
@@ -22,9 +22,11 @@ export function OpenCycleModal({ open, onClose }) {
   };
   const [dates, setDates] = useState(() => rangeOf(suggestion.month, suggestion.year));
   const [busy, setBusy] = useState(false);
+  const [activate, setActivate] = useState(true);
 
   useEffect(() => {
     if (open) {
+      setActivate(true);
       setMonth(suggestion.month);
       setYear(suggestion.year);
     }
@@ -55,6 +57,7 @@ export function OpenCycleModal({ open, onClose }) {
         end_date: dates.end,
         deadline_date: dates.deadline,
         input_open_date: dates.open,
+        activate,
       });
       onClose();
     } catch {
@@ -74,7 +77,7 @@ export function OpenCycleModal({ open, onClose }) {
         <>
           <Button variant="ghost" onClick={onClose}>Batal</Button>
           <Button variant="primary" icon={RefreshCw} busy={busy} disabled={!valid} onClick={confirm}>
-            Buka periode & reset status semua bagian
+            {activate ? 'Buka & jadikan bulan aktif' : 'Siapkan bulan (belum aktif)'}
           </Button>
         </>
       }
@@ -102,6 +105,13 @@ export function OpenCycleModal({ open, onClose }) {
             <Input id="oc-deadline" type="date" value={dates.deadline} onChange={(e) => setDates((d) => ({ ...d, deadline: e.target.value }))} />
           </Field>
         </div>
+        <label className="flex items-start gap-2.5 rounded-lg border border-line px-3.5 py-3 text-[13.5px]">
+          <input id="oc-activate" type="checkbox" className="mt-0.5 size-4 accent-[#1D4ED8]" checked={activate} onChange={(e) => setActivate(e.target.checked)} />
+          <span>
+            <strong className="text-ink">Langsung jadikan bulan aktif</strong>
+            <span className="block text-muted">Bila tidak dicentang, bulan disiapkan dengan status <em>belum aktif</em> dan akan aktif otomatis saat waktunya tiba (atau aktifkan sendiri dari tabel).</span>
+          </span>
+        </label>
         <p className="text-[12.5px] text-muted">
           Tanggal dihitung dari kalender Umm al-Qura dan dapat disesuaikan dengan penetapan awal bulan Kemenag/pondok.
         </p>
@@ -111,7 +121,8 @@ export function OpenCycleModal({ open, onClose }) {
           <Callout tone="info" title="Yang terjadi saat periode dibuka">
             <ul className="list-disc pl-4">
               <li>Tahun ajaran: {ta.label_masehi} / {ta.label_hijri}{period ? '' : ' (akan dibuat otomatis)'}.</li>
-              {activeCycle && <li>{cycleLabel(activeCycle)} diarsipkan; {pending} bagian yang belum lapor masih bisa mengirim sampai {deadlineText(activeCycle)}.</li>}
+              {activate && activeCycle && <li>{cycleLabel(activeCycle)} diarsipkan; {pending} bagian yang belum lapor masih bisa mengirim sampai {deadlineText(activeCycle)}.</li>}
+              {!activate && activeCycle && <li>{cycleLabel(activeCycle)} tetap menjadi bulan aktif.</li>}
               <li>{activeDepartments.length} status pelaporan baru dibuat dengan status belum lapor.</li>
               <li>Bagian baru bisa mengirim laporan bulan ini mulai {formatGregorian(dates.open, true)}, dan hanya setelah laporan bulan sebelumnya terkirim.</li>
               <li>Rundown minggu 1–4 dihitung ulang dari tanggal mulai.</li>
@@ -128,6 +139,18 @@ export default function Periods({ onOpenCycle }) {
   const latestPeriod = [...periods].sort((a, b) => b.label_hijri.localeCompare(a.label_hijri))[0];
   const [next, setNext] = useState(() => (latestPeriod ? nextAcademicLabels(latestPeriod) : { label_masehi: '2026-2027', label_hijri: '1447-1448' }));
   const [editDates, setEditDates] = useState(null);
+  const [confirm, setConfirm] = useState(null); // { kind: 'aktif' | 'hapus', c }
+  const [busyId, setBusyId] = useState('');
+  const doAction = async (key, fn) => {
+    setBusyId(key);
+    try {
+      await fn();
+    } catch {
+      /* toast tampil */
+    } finally {
+      setBusyId('');
+    }
+  };
 
   useEffect(() => {
     cycles.forEach((c) => loadReports(c.id));
@@ -142,7 +165,7 @@ export default function Periods({ onOpenCycle }) {
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-[360px_minmax(0,1fr)]">
-      <Panel eyebrow="Lintas tahun, tanpa batas periode" title="Tahun ajaran">
+      <Panel eyebrow="Lintas tahun, tanpa batas periode" title="Tahun ajaran" className="lg:order-2">
         <ul className="flex flex-col gap-2">
           {sortedPeriods.map((p) => (
             <li key={p.id} className="flex items-center justify-between gap-3 rounded-lg border border-line px-3.5 py-2.5">
@@ -171,6 +194,7 @@ export default function Periods({ onOpenCycle }) {
       </Panel>
 
       <Panel
+        className="lg:order-1 lg:col-span-2"
         eyebrow={`${cycles.length} siklus tercatat`}
         title="Siklus bulanan & arsip"
         bodyClass="p-0"
@@ -180,7 +204,7 @@ export default function Periods({ onOpenCycle }) {
           <Empty icon={CalendarRange} title="Belum ada siklus" />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] text-left text-[13px]">
+            <table className="w-full min-w-[960px] text-left text-[13px]">
               <thead className="bg-mist text-[11px] uppercase tracking-[0.08em] text-muted">
                 <tr>
                   <th className="py-2.5 pl-5 pr-3 font-semibold">Bulan</th>
@@ -198,19 +222,41 @@ export default function Periods({ onOpenCycle }) {
                   const n = reps ? reps.filter((r) => r.submitted_at).length : null;
                   return (
                     <tr key={c.id} className={c.id === viewCycle?.id ? 'bg-sky-wash/60' : ''}>
+                      {/* status: aktif / belum aktif / arsip; input: dibuka / belum / ditutup */}
                       <td className="py-2.5 pl-5 pr-3 font-semibold text-ink">{cycleLabel(c)}</td>
                       <td className="px-3 py-2.5 text-muted tabular-nums">{formatGregorian(c.start_date)} – {formatGregorian(c.end_date)}</td>
                       <td className="px-3 py-2.5 tabular-nums">
                         {formatGregorian(cycleOpenDate(c))}
-                        {!isInputOpen(c, today) && <span className="ml-1.5"><Badge tone="warn">belum</Badge></span>}
+                        <span className="ml-1.5">
+                          {c.input_closed_at ? <Badge tone="late" icon={Lock}>ditutup</Badge> : isInputOpen(c, today) ? <Badge tone="ok">dibuka</Badge> : <Badge tone="warn">belum</Badge>}
+                        </span>
                       </td>
                       <td className="px-3 py-2.5 tabular-nums">{formatGregorian(c.deadline_date)}</td>
                       <td className="px-3 py-2.5 tabular-nums">{n == null ? '…' : `${n}/${reps.length}`}</td>
-                      <td className="px-3 py-2.5">{c.status === 'aktif' ? <Badge tone="ok">aktif</Badge> : <Badge icon={Archive}>arsip</Badge>}</td>
+                      <td className="px-3 py-2.5">
+                        {cycleStateOf(c) === 'aktif' ? <Badge tone="ok" icon={CheckCircle2}>aktif</Badge> : cycleStateOf(c) === 'belum' ? <Badge tone="brand">belum aktif</Badge> : <Badge icon={Archive}>arsip</Badge>}
+                      </td>
                       <td className="py-2.5 pl-3 pr-5 text-right">
-                        <div className="flex justify-end gap-1">
-                          {c.status === 'aktif' && <Button size="sm" variant="ghost" onClick={() => setEditDates({ ...c, input_open_date: cycleOpenDate(c) })}>Ubah tanggal</Button>}
+                        <div className="flex flex-wrap justify-end gap-1">
+                          {c.status !== 'aktif' && (
+                            <Button size="sm" variant="primary" onClick={() => setConfirm({ kind: 'aktif', c })}>Jadikan aktif</Button>
+                          )}
+                          {c.input_closed_at || !isInputOpen(c, today) ? (
+                            <Button size="sm" busy={busyId === `in-${c.id}`} onClick={() => doAction(`in-${c.id}`, async () => {
+                              await actions.setCycleInput(c, true);
+                              actions.notify(`Input laporan ${cycleLabel(c)} dibuka.`);
+                            })}>Buka input</Button>
+                          ) : (
+                            <Button size="sm" busy={busyId === `in-${c.id}`} onClick={() => doAction(`in-${c.id}`, async () => {
+                              await actions.setCycleInput(c, false);
+                              actions.notify(`Input laporan ${cycleLabel(c)} ditutup. Bulan ini tidak lagi menahan laporan bulan berikutnya.`);
+                            })}>Tutup input</Button>
+                          )}
+                          <Button size="sm" variant="ghost" onClick={() => setEditDates({ ...c, input_open_date: cycleOpenDate(c) })}>Ubah tanggal</Button>
                           <Button size="sm" variant="ghost" icon={Eye} onClick={() => actions.setViewCycleId(c.id)}>Lihat</Button>
+                          {c.status !== 'aktif' && (
+                            <Button size="sm" variant="ghost" icon={Trash2} aria-label={`Hapus ${cycleLabel(c)}`} onClick={() => setConfirm({ kind: 'hapus', c })}>Hapus</Button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -222,9 +268,61 @@ export default function Periods({ onOpenCycle }) {
         )}
       </Panel>
 
-      <div className="lg:col-span-2 lg:max-w-[880px]">
+      <div className="lg:order-3 min-w-0">
         <AdminAccounts />
       </div>
+
+      {confirm && (() => {
+        const c = confirm.c;
+        const reps = reportsByCycle[c.id];
+        const sent = reps ? reps.filter((r) => r.submitted_at).length : null;
+        const active = cycles.find((x) => x.status === 'aktif');
+        const del = confirm.kind === 'hapus';
+        return (
+          <Modal
+            open
+            onClose={() => setConfirm(null)}
+            size="sm"
+            eyebrow={del ? 'Hapus bulan' : 'Jadikan bulan aktif'}
+            title={cycleLabel(c)}
+            footer={
+              <>
+                <Button variant="ghost" onClick={() => setConfirm(null)}>Batal</Button>
+                <Button
+                  variant="primary"
+                  icon={del ? Trash2 : CheckCircle2}
+                  busy={busyId === 'confirm'}
+                  onClick={() => doAction('confirm', async () => {
+                    if (del) {
+                      const res = await actions.deleteCycle(c);
+                      actions.notify(`${cycleLabel(c)} dihapus${res?.laporan_terhapus ? ` beserta ${res.laporan_terhapus} laporan` : ''}.`);
+                    } else {
+                      await actions.activateCycle(c);
+                      actions.notify(`${cycleLabel(c)} sekarang bulan aktif.`);
+                    }
+                    setConfirm(null);
+                  })}
+                >
+                  {del ? 'Hapus permanen' : 'Jadikan aktif'}
+                </Button>
+              </>
+            }
+          >
+            {del ? (
+              <Callout tone="error" title="Tidak bisa dibatalkan">
+                Bulan ini beserta seluruh status pelaporannya, {sent == null ? 'laporan yang sudah masuk' : <strong>{sent} laporan yang sudah masuk</strong>}, program kerja, catatan admin, dan antrean pengingatnya akan dihapus permanen.
+                {sent ? ' Bila hanya ingin menghentikan pengiriman, pakai Tutup input saja.' : ''}
+              </Callout>
+            ) : (
+              <div className="flex flex-col gap-2 text-[13.5px] leading-relaxed text-ink">
+                <p>Rundown, dasbor, pengingat, dan formulir akan memakai {cycleLabel(c)} sebagai bulan berjalan.</p>
+                {active && <p className="text-muted">{cycleLabel(active)} menjadi arsip; laporannya tetap tersimpan dan input-nya tidak berubah.</p>}
+                <p className="text-muted">Bulan yang pernah aktif tidak diambil alih oleh pembukaan otomatis, jadi pilihan ini bertahan sampai bulan baru dibuka.</p>
+              </div>
+            )}
+          </Modal>
+        );
+      })()}
 
       {editDates && (
         <Modal

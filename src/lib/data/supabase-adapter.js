@@ -138,10 +138,20 @@ export function createSupabaseAdapter() {
           p_start_date: c.start_date,
           p_end_date: c.end_date,
           p_deadline: c.deadline_date,
+          p_activate: c.activate !== false,
         })
       );
       if (c.input_open_date) must(await sb.from('monthly_cycles').update({ input_open_date: c.input_open_date }).eq('id', id));
       return id;
+    },
+    async activateCycle(cycleId) {
+      must(await sb.rpc('activate_cycle', { p_cycle_id: cycleId }));
+    },
+    async setCycleInput(cycleId, open) {
+      must(await sb.rpc('set_cycle_input', { p_cycle_id: cycleId, p_open: open }));
+    },
+    async deleteCycle(cycleId) {
+      return must(await sb.rpc('delete_cycle', { p_cycle_id: cycleId }));
     },
     async updateCycle(cycleId, patch) {
       must(await sb.from('monthly_cycles').update(patch).eq('id', cycleId));

@@ -217,6 +217,8 @@ function makeCycle(month, year, periodId, status) {
     end_date: r.end,
     deadline_date: r.deadline,
     input_open_date: inputOpenDateFor(month, year, r.deadline),
+    input_closed_at: null,
+    activated_at: `${r.start}T07:00:00+07:00`,
     status,
     active_week: null,
     opened_at: `${r.start}T07:00:00+07:00`,

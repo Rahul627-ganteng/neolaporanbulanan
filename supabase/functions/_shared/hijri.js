@@ -177,8 +177,15 @@ export function cycleOpenDate(cycle) {
 }
 
 export function isInputOpen(cycle, today) {
+  if (!cycle || cycle.input_closed_at) return false;
   const d = cycleOpenDate(cycle);
   return Boolean(d) && today >= d;
+}
+
+/** Status bulan untuk admin: aktif / belum aktif (disiapkan, belum pernah aktif) / arsip. */
+export function cycleStateOf(cycle) {
+  if (cycle.status === 'aktif') return 'aktif';
+  return cycle.activated_at === null ? 'belum' : 'arsip';
 }
 
 /** "20 Jumadil Akhir 1448 H (Senin, 30 November 2026)" */
