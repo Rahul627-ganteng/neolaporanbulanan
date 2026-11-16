@@ -274,7 +274,7 @@ function MasterTable({ reports, deptById, cycle, today, period }) {
   const lines = (arr, f = (x) => x) => (arr || []).map((x, i) => `${i + 1}. ${f(x)}`).join('\n');
   const exportRows = () =>
     rows.map(({ r, d, s }) => [
-      d.no, d.nama, STATE_META[s].label, r.submitted_at ? formatTimestamp(r.submitted_at) : '-',
+      d.no, d.nama, `${STATE_META[s].label}${r.softfile_manual ? ' (hardfile saja)' : ''}`, r.submitted_at ? formatTimestamp(r.submitted_at) : '-',
       r.sekretaris_nama || '', r.ketua_nama || '', r.pembimbing_nama || '',
       lines(r.hasil_usaha), lines(r.kendala, (k) => `${k.teks} (${kendalaCategory(k.kategori).label})`), lines(r.solusi),
       lines(r.programs, (p) => `${programCategory(p.kategori).emoji} ${p.judul}${p.target ? ` — target: ${p.target}` : ''}`),
@@ -344,7 +344,7 @@ function MasterTable({ reports, deptById, cycle, today, period }) {
           </thead>
           <tbody className="divide-y divide-line align-top">
             {rows.map(({ r, d, s }) => (
-              <tr key={r.id} className={cx('hover:bg-mist/70', r.submitted_at && 'cursor-pointer')} onClick={() => r.submitted_at && setDetail({ r, d })}>
+              <tr key={r.id} className={cx('hover:bg-mist/70', r.submitted_at && !r.softfile_manual && 'cursor-pointer')} onClick={() => r.submitted_at && !r.softfile_manual && setDetail({ r, d })}>
                 <td className="w-[210px] py-3 pl-5 pr-3">
                   <p className="font-semibold text-ink"><span className="text-muted tabular-nums">{d.no}.</span> {d.nama}</p>
                   {r.submitted_at && <p className="text-[11.5px] text-muted tabular-nums">{formatTimestamp(r.submitted_at)}</p>}

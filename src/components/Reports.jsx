@@ -182,7 +182,9 @@ export default function Reports() {
   const downloadAll = async () => {
     setBusy('zip');
     try {
-      const submitted = reports.filter((r) => r.submitted_at);
+      // Laporan "hardfile saja" (dicentang admin) belum punya isi softfile; tidak dibuatkan .docx kosong.
+      const submitted = reports.filter((r) => r.submitted_at && !r.softfile_manual && deptById.has(r.department_id));
+      if (!submitted.length) throw new Error('Belum ada softfile yang diinput bagian (yang ada hanya hardfile dicentang admin).');
       const files = [];
       for (const r of submitted) {
         const d = deptById.get(r.department_id);
@@ -249,9 +251,13 @@ export default function Reports() {
                     {r.softfile_manual && <Badge tone="muted">hardfile saja · dicentang admin</Badge>}
                     {r.submitted_at && (
                       <>
-                        <Button size="sm" variant="ghost" icon={Eye} onClick={() => setDetail({ r, d })}>Isi</Button>
-                        <Button size="sm" onClick={() => setCard({ r, d })}>Kartu</Button>
-                        <Button size="sm" icon={FileText} busy={busy === r.id} onClick={() => downloadOne(r, d)}>.docx</Button>
+                        {!r.softfile_manual && (
+                          <>
+                            <Button size="sm" variant="ghost" icon={Eye} onClick={() => setDetail({ r, d })}>Isi</Button>
+                            <Button size="sm" onClick={() => setCard({ r, d })}>Kartu</Button>
+                            <Button size="sm" icon={FileText} busy={busy === r.id} onClick={() => downloadOne(r, d)}>.docx</Button>
+                          </>
+                        )}
                         <Button size="sm" variant="ghost" icon={Shuffle} onClick={() => setMoving({ r, d })}>Pindah bulan</Button>
                       </>
                     )}
