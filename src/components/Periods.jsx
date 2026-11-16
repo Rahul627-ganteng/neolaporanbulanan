@@ -23,10 +23,16 @@ export function OpenCycleModal({ open, onClose }) {
   const [dates, setDates] = useState(() => rangeOf(suggestion.month, suggestion.year));
   const [busy, setBusy] = useState(false);
   const [activate, setActivate] = useState(true);
+  const [adminOnly, setAdminOnly] = useState(false);
+  // Bulan yang sudah lewat (sebelum bulan aktif): bawaan tidak diaktifkan & hanya admin yang menginput.
+  const past = Boolean(activeCycle) && Number(year) * 12 + Number(month) < activeCycle.hijri_year * 12 + activeCycle.hijri_month;
+  useEffect(() => {
+    setActivate(!past);
+    setAdminOnly(past);
+  }, [past, open]);
 
   useEffect(() => {
     if (open) {
-      setActivate(true);
       setMonth(suggestion.month);
       setYear(suggestion.year);
     }
@@ -48,7 +54,7 @@ export function OpenCycleModal({ open, onClose }) {
     try {
       let periodId = period?.id;
       if (!periodId) periodId = (await actions.createPeriod(ta)).id;
-      await actions.openCycle({
+      const id = await actions.openCycle({
         period_id: periodId,
         hijri_month: Number(month),
         hijri_year: Number(year),
@@ -59,6 +65,7 @@ export function OpenCycleModal({ open, onClose }) {
         input_open_date: dates.open,
         activate,
       });
+      if (adminOnly && id) await actions.setCycleInput({ id }, false);
       onClose();
     } catch {
       /* toast tampil */
@@ -110,6 +117,13 @@ export function OpenCycleModal({ open, onClose }) {
           <span>
             <strong className="text-ink">Langsung jadikan bulan aktif</strong>
             <span className="block text-muted">Bila tidak dicentang, bulan disiapkan dengan status <em>belum aktif</em> dan akan aktif otomatis saat waktunya tiba (atau aktifkan sendiri dari tabel).</span>
+          </span>
+        </label>
+        <label className="flex items-start gap-2.5 rounded-lg border border-line px-3.5 py-3 text-[13.5px]">
+          <input id="oc-admin-only" type="checkbox" className="mt-0.5 size-4 accent-[#1D4ED8]" checked={adminOnly} onChange={(e) => setAdminOnly(e.target.checked)} />
+          <span>
+            <strong className="text-ink">Hanya admin yang menginput</strong>
+            <span className="block text-muted">Untuk bulan lama yang sudah terlambat: bagian tidak bisa mengirim, dan bulan ini tidak menahan laporan bulan berikutnya.</span>
           </span>
         </label>
         <p className="text-[12.5px] text-muted">
@@ -228,13 +242,13 @@ export default function Periods({ onOpenCycle }) {
                       <td className="px-3 py-2.5 tabular-nums">
                         {formatGregorian(cycleOpenDate(c))}
                         <span className="ml-1.5">
-                          {c.input_closed_at ? <Badge tone="late" icon={Lock}>ditutup</Badge> : isInputOpen(c, today) ? <Badge tone="ok">dibuka</Badge> : <Badge tone="warn">belum</Badge>}
+                          {c.input_closed_at ? <Badge tone="late" icon={Lock}>hanya admin</Badge> : isInputOpen(c, today) ? <Badge tone="ok">dibuka</Badge> : <Badge tone="warn">belum</Badge>}
                         </span>
                       </td>
                       <td className="px-3 py-2.5 tabular-nums">{formatGregorian(c.deadline_date)}</td>
                       <td className="px-3 py-2.5 tabular-nums">{n == null ? '…' : `${n}/${reps.length}`}</td>
                       <td className="px-3 py-2.5">
-                        {cycleStateOf(c) === 'aktif' ? <Badge tone="ok" icon={CheckCircle2}>aktif</Badge> : cycleStateOf(c) === 'belum' ? <Badge tone="brand">belum aktif</Badge> : <Badge icon={Archive}>arsip</Badge>}
+                        {cycleStateOf(c, today) === 'aktif' ? <Badge tone="ok" icon={CheckCircle2}>aktif</Badge> : cycleStateOf(c, today) === 'belum' ? <Badge tone="brand">belum aktif</Badge> : <Badge icon={Archive}>arsip</Badge>}
                       </td>
                       <td className="py-2.5 pl-3 pr-5 text-right">
                         <div className="flex flex-wrap justify-end gap-1">
@@ -244,13 +258,13 @@ export default function Periods({ onOpenCycle }) {
                           {c.input_closed_at || !isInputOpen(c, today) ? (
                             <Button size="sm" busy={busyId === `in-${c.id}`} onClick={() => doAction(`in-${c.id}`, async () => {
                               await actions.setCycleInput(c, true);
-                              actions.notify(`Input laporan ${cycleLabel(c)} dibuka.`);
-                            })}>Buka input</Button>
+                              actions.notify(`Input laporan ${cycleLabel(c)} dibuka untuk bagian.`);
+                            })}>{c.input_closed_at ? 'Buka untuk bagian' : 'Buka input sekarang'}</Button>
                           ) : (
                             <Button size="sm" busy={busyId === `in-${c.id}`} onClick={() => doAction(`in-${c.id}`, async () => {
                               await actions.setCycleInput(c, false);
-                              actions.notify(`Input laporan ${cycleLabel(c)} ditutup. Bulan ini tidak lagi menahan laporan bulan berikutnya.`);
-                            })}>Tutup input</Button>
+                              actions.notify(`${cycleLabel(c)} kini hanya bisa diinput admin dan tidak menahan laporan bulan berikutnya.`);
+                            })}>Hanya admin</Button>
                           )}
                           <Button size="sm" variant="ghost" onClick={() => setEditDates({ ...c, input_open_date: cycleOpenDate(c) })}>Ubah tanggal</Button>
                           <Button size="sm" variant="ghost" icon={Eye} onClick={() => actions.setViewCycleId(c.id)}>Lihat</Button>
@@ -311,7 +325,7 @@ export default function Periods({ onOpenCycle }) {
             {del ? (
               <Callout tone="error" title="Tidak bisa dibatalkan">
                 Bulan ini beserta seluruh status pelaporannya, {sent == null ? 'laporan yang sudah masuk' : <strong>{sent} laporan yang sudah masuk</strong>}, program kerja, catatan admin, dan antrean pengingatnya akan dihapus permanen.
-                {sent ? ' Bila hanya ingin menghentikan pengiriman, pakai Tutup input saja.' : ''}
+                {sent ? ' Bila hanya ingin menghentikan pengiriman dari bagian, pakai Hanya admin saja.' : ''}
               </Callout>
             ) : (
               <div className="flex flex-col gap-2 text-[13.5px] leading-relaxed text-ink">
