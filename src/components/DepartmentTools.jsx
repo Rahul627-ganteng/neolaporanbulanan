@@ -265,16 +265,20 @@ function mapRows(table, departments) {
   body.forEach((r) => {
     const get = (k) => (mapping[k] != null ? r[mapping[k]] ?? '' : '');
     const no = Number(String(get('no')).replace(/\D/g, ''));
-    const dept = byNo.get(no) || byName.get(norm(get('nama')));
+    // Nama bagian didahulukan: nomor urut bisa bergeser (mis. bagian baru disisipkan),
+    // sehingga berkas lama bisa menimpa pejabat bagian lain bila dicocokkan lewat nomor.
+    const fileName = String(get('nama')).trim();
+    const dept = byName.get(norm(fileName)) || byNo.get(no);
     if (!dept) {
       if (r.some(Boolean)) unmatched.push(r.join(' | '));
       return;
     }
+    const waIssues = [];
+    if (fileName && norm(fileName) !== norm(dept.nama)) waIssues.push(`Nama di berkas "${fileName}" berbeda, dicocokkan lewat nomor ${dept.no} — periksa`);
     const next = { ...dept };
     ['ketua_nama', 'sekretaris_nama', 'pembimbing_nama'].forEach((k) => {
       if (mapping[k] != null && get(k)) next[k] = get(k);
     });
-    const waIssues = [];
     ['ketua_wa', 'sekretaris_wa'].forEach((k) => {
       if (mapping[k] == null || !get(k)) return;
       const n = normalizeWa(get(k));
@@ -286,7 +290,9 @@ function mapRows(table, departments) {
     );
     items.push({ dept, next, changed, waIssues });
   });
-  return { items, unmatched, mapped: Object.keys(mapping) };
+  // Bagian yang muncul dua kali: baris terakhir yang berlaku (satu simpanan per bagian).
+  const last = new Map(items.map((it) => [it.dept.id, it]));
+  return { items: [...last.values()], unmatched, mapped: Object.keys(mapping) };
 }
 
 export function ImportDepartmentsModal({ open, onClose }) {
