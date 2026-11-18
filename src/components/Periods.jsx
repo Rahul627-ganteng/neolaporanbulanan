@@ -7,7 +7,12 @@ import { Badge, Button, Callout, Empty, Field, Input, Modal, Panel, Select } fro
 import AdminAccounts from './AdminAccounts.jsx';
 
 export function OpenCycleModal({ open, onClose }) {
-  const { cycles, periods, activeCycle, activeDepartments, today, actions, reportByDept } = useStore();
+  const { cycles, periods, activeCycle, activeDepartments, today, actions, reportsByCycle, loadReports } = useStore();
+  // Hitungan "belum lapor" harus dari bulan aktif, bukan bulan yang sedang dilihat.
+  useEffect(() => {
+    if (open && activeCycle) loadReports(activeCycle.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, activeCycle?.id]);
   const suggestion = useMemo(() => {
     const latest = [...cycles].sort((a, b) => b.hijri_year - a.hijri_year || b.hijri_month - a.hijri_month)[0];
     if (latest) return nextHijriMonth(latest.hijri_month, latest.hijri_year);
@@ -45,7 +50,9 @@ export function OpenCycleModal({ open, onClose }) {
   const ta = academicYearFor(Number(month), Number(year));
   const period = periods.find((p) => p.label_hijri === ta.label_hijri);
   const exists = cycles.some((c) => c.hijri_month === Number(month) && c.hijri_year === Number(year));
-  const pending = activeCycle ? activeDepartments.filter((d) => !reportByDept.get(d.id)?.submitted_at).length : 0;
+  const activeReps = activeCycle ? reportsByCycle[activeCycle.id] : null;
+  const sentIds = new Set((activeReps || []).filter((r) => r.submitted_at).map((r) => r.department_id));
+  const pending = activeReps ? activeDepartments.filter((d) => !sentIds.has(d.id)).length : '…';
   const masehi = masehiLabelFor(dates.start, dates.end);
   const valid = !exists && dates.start && dates.end && dates.deadline && dates.deadline > dates.end && dates.end >= dates.start && dates.open && dates.open <= dates.deadline;
 
@@ -350,15 +357,18 @@ export default function Periods({ onOpenCycle }) {
               <Button variant="ghost" onClick={() => setEditDates(null)}>Batal</Button>
               <Button
                 variant="primary"
-                disabled={!editDates.input_open_date || editDates.input_open_date > editDates.deadline_date}
-                onClick={async () => {
+                busy={busyId === 'dates'}
+                disabled={!editDates.start_date || !editDates.end_date || !editDates.deadline_date || !editDates.input_open_date
+                  || editDates.end_date < editDates.start_date || editDates.deadline_date <= editDates.end_date
+                  || editDates.input_open_date > editDates.deadline_date}
+                onClick={() => doAction('dates', async () => {
                   await actions.updateCycleDates(editDates.id, {
                     start_date: editDates.start_date, end_date: editDates.end_date, deadline_date: editDates.deadline_date,
                     input_open_date: editDates.input_open_date,
                     masehi_label: masehiLabelFor(editDates.start_date, editDates.end_date),
                   });
                   setEditDates(null);
-                }}
+                })}
               >
                 Simpan tanggal
               </Button>
@@ -378,6 +388,12 @@ export default function Periods({ onOpenCycle }) {
             )}
             {editDates.input_open_date > editDates.deadline_date && (
               <Callout tone="error">Tanggal buka input tidak boleh melewati tenggat.</Callout>
+            )}
+            {editDates.end_date < editDates.start_date && (
+              <Callout tone="error">Akhir bulan tidak boleh sebelum tanggal mulai.</Callout>
+            )}
+            {editDates.deadline_date <= editDates.end_date && (
+              <Callout tone="error">Tenggat harus sesudah akhir bulan.</Callout>
             )}
           </div>
         </Modal>
