@@ -9,6 +9,10 @@ Sistem informasi pelaporan bulanan untuk 49 bagian Sektor Guru KMI: formulir sof
 
 **Softfile dicentang admin.** Di **Rundown & Pengingat**, kolom *Softfile* bisa dicentang admin untuk bagian yang sudah menyerahkan hardfile tetapi belum bisa menginput softfile. Bagian itu dihitung sudah lapor (tidak masuk rekap Belum Lapor, tidak menahan bulan berikutnya) dan ditandai *hardfile saja*. Centang bisa dibatalkan; softfile yang diinput bagian sendiri tidak bisa dibatalkan dari sini. Bila bagian kemudian menginput softfile, tandanya hilang.
 
+**Revisi & rapikan.** Admin membuka laporan bagian mana pun lewat **Laporan Masuk → Revisi** (atau **Dasbor Bagian → Revisi / rapikan laporan**). Formulir terisi isi laporan; tombol **Rapikan teks** merapikan spasi, penomoran yang diketik sendiri, huruf besar, tanda baca, nama pejabat, butir kosong/ganda, dan memecah butir yang ditempel beberapa baris (bisa dibatalkan). **Simpan revisi** mempertahankan waktu kirim asli dan menandai laporan *direvisi admin*. Tombol *Rapikan teks* juga tersedia untuk bagian.
+
+**Kartu laporan.** Kartu bisa ditampilkan sebagai *Program kerja bulan depan* (kartu pengingat) atau *Laporan lengkap* (evaluasi, hasil usaha, kendala, solusi, program kerja), lalu diunduh PNG/PDF atau dikirim sebagai teks WhatsApp.
+
 **Berurutan.** Bagian tidak bisa mengirim laporan bulan M+1 selama laporan bulan M (atau bulan lain yang lebih awal dan sudah dibuka) belum terkirim. Formulir otomatis membuka bulan yang tertunggak dan dasbor bagian menampilkan peringatannya. Admin tidak terkena aturan ini, dan bisa memindahkan laporan yang masuk ke bulan yang salah (**Laporan Masuk → Pindah bulan**, RPC `move_report`).
 
 | Mode | Kapan aktif | Penyimpanan |
@@ -41,6 +45,7 @@ supabase/
     20261116090000_laporan_berurutan_buka_tgl20.sql input dibuka tgl 20, laporan berurutan, pindah laporan ke bulan lain
     20261116103000_kelola_bulan.sql                 jadikan aktif, buka/tutup input, hapus bulan, siapkan bulan belum aktif
     20261116150000_softfile_dicentang_admin.sql     admin mencentang Softfile untuk bagian yang baru menyerahkan hardfile
+    20261119103000_revisi_admin.sql                 revisi laporan oleh admin dicatat (direvisi_admin_at)
   functions/
     _shared/rundown.js              aturan rundown & template WA (dipakai frontend + Edge Function)
     _shared/hijri.js                kalender Hijriah (Umm al-Qura) & rencana pembukaan periode

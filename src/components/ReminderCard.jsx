@@ -2,19 +2,115 @@ import React, { useRef, useState } from 'react';
 import { Copy, FileDown, FileText, Image as ImageIcon, MessageCircle } from 'lucide-react';
 import { useStore } from '../lib/store.jsx';
 import {
-  buildProgramCardText, cycleLabel, HIJRI_MONTHS, INSTITUTION, nextHijriMonth, nextMonthLabel, programCategory, waLink, formatWa,
+  buildFullReportText, buildProgramCardText, cycleLabel, HIJRI_MONTHS, INSTITUTION, kendalaCategory, nextHijriMonth, nextMonthLabel, programCategory, waLink, formatWa,
 } from '../lib/constants.js';
+import { evalScore, evalStatus } from '../lib/evaluasi.js';
 import { formatTimestamp } from '../lib/hijri.js';
 import { nodeToPng, pngToPdf } from '../lib/exports.js';
 import { reportDocxBlob, reportDocxFilename } from '../lib/docx-report.js';
 import { copyText, saveFile, slug } from '../lib/files.js';
-import { Button, Modal } from './ui.jsx';
+import { Button, Modal, Segmented } from './ui.jsx';
 import Logo from './Logo.jsx';
 
 const ORDER = ['unggulan', 'inovasi', 'tindak_lanjut', 'reguler'];
 
 /** Kartu visual yang juga diekspor menjadi gambar/PDF (warna & font eksplisit agar hasil ekspor stabil). */
-export const ReminderCard = React.forwardRef(function ReminderCard({ report, department, cycle }, ref) {
+const EVAL_COLOR = { terlaksana: '#047857', sebagian: '#B45309', belum: '#B91C1C' };
+
+function Section({ no, title, children }) {
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="flex items-baseline gap-2 text-[12px] font-bold uppercase tracking-[0.14em] text-[#1D4ED8]">
+        {no && <span className="font-serif text-[15px] normal-case tracking-normal text-[#1E3A8A]">{no}</span>}
+        {title}
+      </p>
+      {children}
+    </div>
+  );
+}
+
+function Numbered({ items }) {
+  return (
+    <ol className="flex flex-col gap-1.5">
+      {items.map((t, i) => (
+        <li key={i} className="flex gap-2.5 text-[13.5px] leading-snug">
+          <span className="w-4 shrink-0 text-right font-semibold text-[#5B6478] tabular-nums">{i + 1}.</span>
+          <span className="min-w-0 flex-1">{t}</span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+/** Versi lengkap: evaluasi, hasil usaha, kendala, solusi, dan program kerja. */
+function FullBody({ report, cycle, programs }) {
+  const ev = (report.evaluasi_program || []).filter((e) => e.judul);
+  const score = evalScore(ev);
+  const hasil = (report.hasil_usaha || []).filter(Boolean);
+  const kendala = (report.kendala || []).filter((k) => k.teks);
+  const solusi = (report.solusi || []).filter(Boolean);
+  return (
+    <div className="flex flex-col gap-5 px-7 py-5">
+      {ev.length > 0 && (
+        <Section title={`Evaluasi program bulan lalu${score != null ? ` · ${score}% terlaksana` : ''}`}>
+          <ul className="flex flex-col gap-1.5">
+            {ev.map((e, i) => {
+              const st = evalStatus(e.status);
+              return (
+                <li key={i} className="flex items-start justify-between gap-3 text-[13.5px] leading-snug">
+                  <span className="min-w-0 flex-1">
+                    {e.judul}
+                    {e.catatan && <span className="block text-[12px] text-[#5B6478]">{e.catatan}</span>}
+                  </span>
+                  <span className="shrink-0 text-[12px] font-bold" style={{ color: EVAL_COLOR[e.status] || '#5B6478' }}>{st ? st.label : '—'}</span>
+                </li>
+              );
+            })}
+          </ul>
+        </Section>
+      )}
+      <Section no="I" title="Hasil usaha">
+        {hasil.length ? <Numbered items={hasil} /> : <p className="text-[13px] text-[#5B6478]">—</p>}
+      </Section>
+      <Section no="II" title="Kendala">
+        {kendala.length ? (
+          <Numbered items={kendala.map((k) => (
+            <>
+              {k.teks} <span className="text-[11.5px] font-semibold text-[#5B6478]">· {kendalaCategory(k.kategori).label}</span>
+            </>
+          ))} />
+        ) : <p className="text-[13px] text-[#5B6478]">—</p>}
+      </Section>
+      <Section no="III" title="Solusi">
+        {solusi.length ? <Numbered items={solusi} /> : <p className="text-[13px] text-[#5B6478]">—</p>}
+      </Section>
+      <Section no="IV" title={`Program kerja ${nextMonthLabel(cycle)}`}>
+        <ol className="flex flex-col gap-1.5">
+          {programs.map((p, i) => {
+            const c = programCategory(p.kategori);
+            const top = p.kategori === 'unggulan';
+            return (
+              <li key={p.id || i} className={`flex items-start gap-2.5 rounded-lg px-3 py-2 text-[13.5px] leading-snug ${top ? 'bg-[#1E3A8A] text-white' : 'bg-[#F1F5FB]'}`}>
+                <span className="leading-none">{c.emoji}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="font-semibold">{p.judul}</span>
+                  <span className={`block text-[11.5px] ${top ? 'text-[#BFD3FB]' : 'text-[#5B6478]'}`}>
+                    {c.label}
+                    {p.target ? ` · target: ${p.target}` : ''}
+                  </span>
+                </span>
+              </li>
+            );
+          })}
+          {programs.length === 0 && <p className="text-[13px] text-[#5B6478]">Belum ada program kerja.</p>}
+        </ol>
+      </Section>
+    </div>
+  );
+}
+
+export const ReminderCard = React.forwardRef(function ReminderCard({ report, department, cycle, variant = 'proker' }, ref) {
+  const full = variant === 'lengkap';
   const programs = [...(report.programs || [])].sort((a, b) => ORDER.indexOf(a.kategori) - ORDER.indexOf(b.kategori));
   const top = programs.filter((p) => p.kategori === 'unggulan');
   const rest = programs.filter((p) => p.kategori !== 'unggulan');
@@ -25,17 +121,22 @@ export const ReminderCard = React.forwardRef(function ReminderCard({ report, dep
       <div className="kmi-card-head relative px-7 pb-6 pt-6 text-white">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-[10.5px] font-semibold uppercase tracking-[0.22em] text-[#BFD3FB]">Kartu Pengingat Target Program</p>
+            <p className="text-[10.5px] font-semibold uppercase tracking-[0.22em] text-[#BFD3FB]">{full ? 'Kartu Laporan Bulanan · Lengkap' : 'Kartu Pengingat Target Program'}</p>
             <p className="mt-0.5 text-[12px] text-[#DCE6FB]">{INSTITUTION.sektor} · {INSTITUTION.singkat}</p>
           </div>
           <Logo className="size-14 shrink-0" />
         </div>
         <h3 className="mt-4 font-serif text-[28px] font-semibold leading-tight">{department.nama}</h3>
         <p className="mt-1 text-[14px] text-[#DCE6FB]">
-          Program kerja <strong className="font-semibold text-white">{nextMonthLabel(cycle)}</strong> · dari laporan {cycleLabel(cycle)}
+          {full ? (
+            <>Laporan bulan <strong className="font-semibold text-white">{cycleLabel(cycle)}</strong> · program kerja {nextMonthLabel(cycle)}</>
+          ) : (
+            <>Program kerja <strong className="font-semibold text-white">{nextMonthLabel(cycle)}</strong> · dari laporan {cycleLabel(cycle)}</>
+          )}
         </p>
       </div>
 
+      {full ? <FullBody report={report} cycle={cycle} programs={programs} /> : (
       <div className="flex flex-col gap-2.5 px-7 py-5">
         {top.length > 0 && (
           <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#1D4ED8]">🌟 Program unggulan / prioritas utama</p>
@@ -67,6 +168,7 @@ export const ReminderCard = React.forwardRef(function ReminderCard({ report, dep
         })}
         {programs.length === 0 && <p className="text-[14px] text-[#5B6478]">Belum ada program kerja untuk bulan depan.</p>}
       </div>
+      )}
 
       <div className="grid grid-cols-2 gap-4 border-t border-[#E4EAF3] bg-[#F8FAFC] px-7 py-4 text-[13px]">
         <div>
@@ -78,7 +180,8 @@ export const ReminderCard = React.forwardRef(function ReminderCard({ report, dep
           <p className="font-semibold">{report.sekretaris_nama || department.sekretaris_nama || '—'}</p>
         </div>
         <p className="col-span-2 text-[11.5px] text-[#5B6478]">
-          Laporan diterima {formatTimestamp(report.submitted_at)} · Laporan {HIJRI_MONTHS[programMonth.month - 1]} dikumpulkan selambatnya 5 {HIJRI_MONTHS[after.month - 1]} {after.year} H.
+          Laporan diterima {formatTimestamp(report.submitted_at)}
+          {report.direvisi_admin_at ? ` · direvisi admin ${formatTimestamp(report.direvisi_admin_at)}` : ''} · Laporan {HIJRI_MONTHS[programMonth.month - 1]} dikumpulkan selambatnya 5 {HIJRI_MONTHS[after.month - 1]} {after.year} H.
         </p>
       </div>
     </div>
@@ -90,12 +193,14 @@ export function ReminderCardModal({ open, onClose, report, department, cycle }) 
   const period = periods.find((p) => p.id === cycle?.period_id) || viewPeriod;
   const ref = useRef(null);
   const [busy, setBusy] = useState('');
+  const [variant, setVariant] = useState('proker');
   if (!open || !report || !department) return null;
-  const text = buildProgramCardText({
-    department, cycle, programs: report.programs || [],
-    ketua: report.ketua_nama || department.ketua_nama, sekretaris: report.sekretaris_nama || department.sekretaris_nama,
-  });
-  const base = `Kartu_${slug(department.nama)}_${HIJRI_MONTHS[cycle.hijri_month - 1].replace(/[^A-Za-z]/g, '')}_${cycle.hijri_year}H`;
+  const ketua = report.ketua_nama || department.ketua_nama;
+  const sekretaris = report.sekretaris_nama || department.sekretaris_nama;
+  const text = variant === 'lengkap'
+    ? buildFullReportText({ department, cycle, report, ketua, sekretaris })
+    : buildProgramCardText({ department, cycle, programs: report.programs || [], ketua, sekretaris });
+  const base = `Kartu${variant === 'lengkap' ? 'Lengkap' : ''}_${slug(department.nama)}_${HIJRI_MONTHS[cycle.hijri_month - 1].replace(/[^A-Za-z]/g, '')}_${cycle.hijri_year}H`;
 
   const act = async (kind) => {
     setBusy(kind);
@@ -122,7 +227,7 @@ export function ReminderCardModal({ open, onClose, report, department, cycle }) 
       open={open}
       onClose={onClose}
       size="lg"
-      eyebrow="Kartu pengingat & dokumen resmi"
+      eyebrow="Kartu laporan & dokumen resmi"
       title={department.nama}
       footer={
         <>
@@ -133,9 +238,17 @@ export function ReminderCardModal({ open, onClose, report, department, cycle }) 
       }
     >
       <div className="flex flex-col gap-5">
+        <div>
+          <Segmented
+            label="Isi kartu"
+            value={variant}
+            onChange={setVariant}
+            options={[{ value: 'proker', label: 'Program kerja bulan depan' }, { value: 'lengkap', label: 'Laporan lengkap' }]}
+          />
+        </div>
         <div className="overflow-x-auto rounded-xl bg-mist p-4">
           <div className="mx-auto w-[640px]">
-            <ReminderCard ref={ref} report={report} department={department} cycle={cycle} />
+            <ReminderCard ref={ref} report={report} department={department} cycle={cycle} variant={variant} />
           </div>
         </div>
         <div className="flex flex-col gap-3">

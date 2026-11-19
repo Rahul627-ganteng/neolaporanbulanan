@@ -285,7 +285,7 @@ export default function App() {
               <ReportForm go={go} />
             </div>
             {tab === 'rundown' && <Rundown />}
-            {tab === 'laporan' && <Reports />}
+            {tab === 'laporan' && <Reports go={go} />}
             {tab === 'admin' && <AdminPanel />}
             {tab === 'saya' && <BagianDashboard go={go} />}
             {tab === 'bagian' && <Departments go={go} />}

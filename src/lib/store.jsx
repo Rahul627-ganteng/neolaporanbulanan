@@ -14,6 +14,8 @@ export function StoreProvider({ children }) {
   const [bagian, setBagian] = useState(() => loadBagianSession());
   const [departmentData, setDepartmentData] = useState({});
   const [dashboardDeptId, setDashboardDeptId] = useState(null);
+  // Laporan yang sedang direvisi admin (dibuka dari Laporan Masuk / Dasbor Bagian).
+  const [revisionTarget, setRevisionTarget] = useState(null);
   // Direktori guru (nama Ketua/Sekretaris); dibuka setelah kode/sesi/admin terverifikasi.
   const [teachers, setTeachers] = useState(null);
   const [pembimbingOptions, setPembimbingOptions] = useState(null);
@@ -355,6 +357,8 @@ export function StoreProvider({ children }) {
     }, 'Kode bagian diganti dan tercatat di data admin. Perangkat lain yang memakai akun ini perlu masuk ulang.'),
     loadDepartmentData,
     setDashboardDeptId,
+    startRevision: (cycleId, departmentId) => setRevisionTarget({ cycleId, departmentId, at: Date.now() }),
+    clearRevision: () => setRevisionTarget(null),
     previousPrograms: (args) => adapter.previousPrograms(args),
     loadFormContext: async (args = {}) => {
       const ctx = await adapter.formContext(args);
@@ -444,7 +448,7 @@ export function StoreProvider({ children }) {
 
   const value = {
     phase, loadError, toast, today, mode: adapter?.mode || 'demo', session, isAdmin,
-    bagian, departmentData, dashboardDeptId, teachers, pembimbingOptions,
+    bagian, departmentData, dashboardDeptId, teachers, pembimbingOptions, revisionTarget,
     // Login pertama: kode bersama belum diganti, atau kontak bagian belum dilengkapi.
     needsSetup: Boolean(
       bagian &&

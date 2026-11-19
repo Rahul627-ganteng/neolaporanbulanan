@@ -187,7 +187,7 @@ function FeedbackEditor({ report }) {
 }
 
 // ------------------------------------------------------------------ satu bulan di riwayat
-function HistoryItem({ r, open, department, isAdmin, today, onDownload, busy }) {
+function HistoryItem({ r, open, department, isAdmin, today, onDownload, busy, onRevise }) {
   const st = reportState(r, r.cycle, today);
   const score = evalScore(r.evaluasi_program);
   const sent = Boolean(r.submitted_at);
@@ -203,6 +203,7 @@ function HistoryItem({ r, open, department, isAdmin, today, onDownload, busy }) 
         <div className="flex flex-wrap items-center gap-1.5">
           {score != null && <Badge tone="brand" icon={ListChecks}>Evaluasi {score}%</Badge>}
           {r.catatan_admin && <Badge tone="navy" icon={MessageSquare}>Catatan admin</Badge>}
+          {r.direvisi_admin_at && <Badge tone="muted" icon={Pencil}>Direvisi admin</Badge>}
           <Badge tone={STATE_META[st].tone}>{STATE_META[st].label}</Badge>
           <ChevronDown className="size-4 text-muted transition-transform group-open:rotate-180" aria-hidden />
         </div>
@@ -298,10 +299,15 @@ function HistoryItem({ r, open, department, isAdmin, today, onDownload, busy }) 
         {isAdmin && <FeedbackEditor report={r} />}
 
         {sent && (
-          <div>
+          <div className="flex flex-wrap gap-2">
             <Button size="sm" icon={Download} busy={busy} onClick={() => onDownload(r)}>
               Unduh berkas Word resmi
             </Button>
+            {isAdmin && onRevise && (
+              <Button size="sm" variant="primary" icon={FileEdit} onClick={() => onRevise(r)}>
+                Revisi / rapikan laporan
+              </Button>
+            )}
           </div>
         )}
       </div>
@@ -652,7 +658,20 @@ export default function BagianDashboard({ go }) {
           <Panel eyebrow={`${reports.length} bulan tercatat`} title="Riwayat laporan" bodyClass="p-0">
             {reports.length ? (
               reports.map((r, i) => (
-                <HistoryItem key={r.id} r={r} open={i === 0} department={dept} isAdmin={isAdmin} today={today} onDownload={download} busy={busy === r.id} />
+                <HistoryItem
+                  key={r.id}
+                  r={r}
+                  open={i === 0}
+                  department={dept}
+                  isAdmin={isAdmin}
+                  today={today}
+                  onDownload={download}
+                  busy={busy === r.id}
+                  onRevise={(rep) => {
+                    actions.startRevision(rep.cycle_id, rep.department_id);
+                    go('input');
+                  }}
+                />
               ))
             ) : (
               <Empty title="Belum ada laporan">Riwayat tampil setelah periode laporan dibuka.</Empty>

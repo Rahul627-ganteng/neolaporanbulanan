@@ -302,6 +302,31 @@ export function buildProgramCardText({ department, cycle, programs, ketua, sekre
   return lines.join('\n');
 }
 
+/** Teks WhatsApp laporan lengkap (evaluasi, hasil usaha, kendala, solusi, program kerja). */
+export function buildFullReportText({ department, cycle, report, ketua, sekretaris }) {
+  const L = [`*LAPORAN BULANAN ${department.nama.toUpperCase()}*`, `Bulan ${cycleLabel(cycle)}`, ''];
+  const ev = (report.evaluasi_program || []).filter((e) => e.judul);
+  if (ev.length) {
+    L.push('*Evaluasi program bulan lalu*');
+    const lab = { terlaksana: 'terlaksana', sebagian: 'sebagian', belum: 'belum' };
+    ev.forEach((e, i) => L.push(`${i + 1}. ${e.judul} — ${lab[e.status] || '-'}${e.catatan ? ` (${e.catatan})` : ''}`));
+    L.push('');
+  }
+  const sec = (title, items) => {
+    if (!items.length) return;
+    L.push(`*${title}*`);
+    items.forEach((t, i) => L.push(`${i + 1}. ${t}`));
+    L.push('');
+  };
+  sec('I. Hasil Usaha', (report.hasil_usaha || []).filter(Boolean));
+  sec('II. Kendala', (report.kendala || []).filter((k) => k.teks).map((k) => `${k.teks} [${kendalaCategory(k.kategori).label}]`));
+  sec('III. Solusi', (report.solusi || []).filter(Boolean));
+  const progs = [...(report.programs || [])].sort((a, b) => order(a.kategori) - order(b.kategori));
+  sec(`IV. Program Kerja ${nextMonthLabel(cycle)}`, progs.map((p) => `${programCategory(p.kategori).emoji} ${p.judul}${p.target ? ` — target: ${p.target}` : ''}`));
+  L.push(`Ketua: ${ketua || '-'} · Sekretaris: ${sekretaris || '-'}`);
+  return L.join('\n');
+}
+
 function order(k) {
   return ['unggulan', 'inovasi', 'tindak_lanjut', 'reguler'].indexOf(k);
 }

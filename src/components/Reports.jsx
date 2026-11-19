@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Archive, Eye, FileText, Inbox, Search, Shuffle, Star } from 'lucide-react';
+import { Archive, Eye, FileText, Inbox, Search, Shuffle, Star, Wand2 } from 'lucide-react';
 import { useStore } from '../lib/store.jsx';
 import { cycleLabel, cycleMonthName, formatGregorian, HIJRI_MONTHS, kendalaCategory, nextMonthLabel, programCategory } from '../lib/constants.js';
 import { formatTimestamp } from '../lib/hijri.js';
@@ -148,7 +148,7 @@ function MoveReportModal({ report, department, cycle, onClose }) {
   );
 }
 
-export default function Reports() {
+export default function Reports({ go }) {
   const { viewCycle, period, reports, departments, today, actions } = useStore();
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState('masuk');
@@ -249,8 +249,20 @@ export default function Reports() {
                     {ung > 0 && <Badge tone="brand" icon={Star}>{ung} unggulan</Badge>}
                     <Badge tone={STATE_META[st].tone}>{STATE_META[st].label}</Badge>
                     {r.softfile_manual && <Badge tone="muted">hardfile saja · dicentang admin</Badge>}
+                    {r.direvisi_admin_at && <Badge tone="muted">direvisi admin</Badge>}
                     {r.submitted_at && (
                       <>
+                        <Button
+                          size="sm"
+                          variant="primary"
+                          icon={Wand2}
+                          onClick={() => {
+                            actions.startRevision(viewCycle.id, d.id);
+                            go?.('input');
+                          }}
+                        >
+                          {r.softfile_manual ? 'Isi laporan' : 'Revisi'}
+                        </Button>
                         {!r.softfile_manual && (
                           <>
                             <Button size="sm" variant="ghost" icon={Eye} onClick={() => setDetail({ r, d })}>Isi</Button>

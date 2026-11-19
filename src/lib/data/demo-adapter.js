@@ -10,7 +10,7 @@ const monthName = (c) => `${HIJRI_MONTHS[c.hijri_month - 1]} ${c.hijri_year} H`;
 const CONTENT_KEYS = [
   'status', 'sekretaris_nama', 'ketua_nama', 'pembimbing_nama', 'hasil_usaha', 'kendala', 'solusi', 'evaluasi_program',
   'pernyataan_inovatif', 'programs', 'submitted_at', 'rapat_bagian_at', 'draft_senior_at', 'pembimbing_approved_at',
-  'wapeng_received_at', 'catatan_admin', 'catatan_admin_at', 'softfile_manual',
+  'wapeng_received_at', 'catatan_admin', 'catatan_admin_at', 'softfile_manual', 'direvisi_admin_at',
 ];
 const clone = (v) => JSON.parse(JSON.stringify(v));
 
@@ -200,6 +200,8 @@ export function createDemoAdapter() {
         db.reports.push(r);
       }
       const now = new Date().toISOString();
+      const byAdmin = !(accessCode && db.sessions?.[accessCode] === departmentId);
+      if (byAdmin && r.submitted_at && !r.softfile_manual) r.direvisi_admin_at = now;
       Object.assign(r, {
         status: 'terkirim',
         softfile_manual: false,

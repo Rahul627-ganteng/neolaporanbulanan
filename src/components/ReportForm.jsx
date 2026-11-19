@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, CheckCircle2, Key, ListChecks, Lock, Plus, Send, ShieldCheck, Sparkles, Trash2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Key, ListChecks, Lock, Plus, RotateCcw, Send, ShieldCheck, Sparkles, Trash2, Wand2 } from 'lucide-react';
 import { useStore } from '../lib/store.jsx';
 import { cycleLabel, cycleMonthName, deadlineText, KENDALA_CATEGORIES, nextMonthLabel, PROGRAM_CATEGORIES, programCategory } from '../lib/constants.js';
 import { EVAL_STATUS } from '../lib/evaluasi.js';
 import { cycleKey, formatTimestamp, inputOpenText, isInputOpen } from '../lib/hijri.js';
+import { tidyReport } from '../lib/tidy.js';
 import { routineHits, toPayload, validateReport } from '../lib/validation.js';
 import { Button, Callout, cx, Field, Input, Panel, Select, Textarea } from './ui.jsx';
 import { ReminderCardModal } from './ReminderCard.jsx';
@@ -83,7 +84,7 @@ function StringList({ idPrefix, items, onChange, placeholder, renderExtra, addLa
 }
 
 export default function ReportForm({ go }) {
-  const { cycles, activeCycle, viewCycle, activeDepartments, departments, reportsByCycle, isAdmin, mode, today, actions, loadReports, bagian, departmentData, teachers, pembimbingOptions } = useStore();
+  const { cycles, activeCycle, viewCycle, activeDepartments, departments, reportsByCycle, isAdmin, mode, today, actions, loadReports, bagian, departmentData, teachers, pembimbingOptions, revisionTarget } = useStore();
   // Masuk sebagai bagian: bagian terkunci, kode akses diganti token sesi.
   const asBagian = Boolean(bagian) && !isAdmin;
   const ownId = asBagian ? bagian.department.id : null;
@@ -191,6 +192,38 @@ export default function ReportForm({ go }) {
         evaluasi: [],
       });
     }
+  };
+
+  // Revisi dari Laporan Masuk: buka bulan & bagian itu dengan isi laporannya.
+  const [revising, setRevising] = useState(null);
+  useEffect(() => {
+    if (!revisionTarget || !isAdmin) return;
+    const { cycleId, departmentId } = revisionTarget;
+    if (form.cycle_id !== cycleId) {
+      setSwitched(null);
+      setForm(emptyForm(cycleId));
+      return;
+    }
+    if (!reportsByCycle[cycleId]) return;
+    pickDepartment(departmentId);
+    setRevising({ cycleId, departmentId });
+    setTidyUndo(null);
+    actions.clearRevision();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revisionTarget, form.cycle_id, reportsByCycle, isAdmin]);
+
+  // Rapikan teks (dengan pembatalan).
+  const [tidyUndo, setTidyUndo] = useState(null);
+  const runTidy = () => {
+    const { form: next, changes } = tidyReport(form);
+    if (!changes) {
+      actions.notify('Isi laporan sudah rapi; tidak ada yang diubah.');
+      return;
+    }
+    setTidyUndo(form);
+    setForm(next);
+    actions.notify(`${changes} isian dirapikan: spasi, penomoran ketikan, huruf besar, tanda baca, butir kosong & ganda. Periksa lagi sebelum mengirim.`);
   };
 
   useEffect(() => {
@@ -307,6 +340,8 @@ export default function ReportForm({ go }) {
       setSwitched(null);
       setProblems(null);
       setConfirmWarn(false);
+      setTidyUndo(null);
+      setRevising(null);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch {
       /* toast sudah tampil */
@@ -469,11 +504,18 @@ export default function ReportForm({ go }) {
               </div>
             ) : (
             <>
-            {existing?.submitted_at && (
+            {existing?.submitted_at && (isAdmin ? (
+              <Callout tone="info" title={revising && revising.departmentId === form.department_id ? 'Mode revisi admin' : 'Bagian ini sudah melapor'}>
+                {existing.softfile_manual
+                  ? 'Bagian ini baru menyerahkan hardfile (softfile dicentang admin). Isi laporannya di sini; waktu terima tetap dipakai.'
+                  : `Softfile masuk ${formatTimestamp(existing.submitted_at)}. Perbaiki atau rapikan isinya lalu tekan Simpan revisi; waktu kirim asli tetap dipakai untuk ketepatan waktu, dan laporan ditandai "direvisi admin".`}
+                {existing.direvisi_admin_at && <> Terakhir direvisi admin {formatTimestamp(existing.direvisi_admin_at)}.</>}
+              </Callout>
+            ) : (
               <Callout tone="info" title="Bagian ini sudah melapor">
                 Softfile masuk {formatTimestamp(existing.submitted_at)}. Mengirim ulang akan memperbarui isi laporan; waktu kirim pertama tetap dicatat untuk penilaian ketepatan waktu.
               </Callout>
-            )}
+            ))}
 
             {(form.evaluasi.length > 0 || evalHint) && (
               <section className="flex flex-col gap-3">
@@ -663,12 +705,16 @@ export default function ReportForm({ go }) {
             )}
 
             <div className="flex flex-wrap items-center justify-end gap-2">
-              <Button variant="ghost" onClick={() => { setForm(emptyForm(form.cycle_id)); setProblems(null); }}>Kosongkan formulir</Button>
+              <Button variant="ghost" onClick={() => { setForm(emptyForm(form.cycle_id)); setProblems(null); setTidyUndo(null); setRevising(null); }}>Kosongkan formulir</Button>
+              {tidyUndo && (
+                <Button variant="ghost" icon={RotateCcw} onClick={() => { setForm(tidyUndo); setTidyUndo(null); }}>Batalkan rapikan</Button>
+              )}
+              <Button icon={Wand2} onClick={runTidy} disabled={!form.department_id}>Rapikan teks</Button>
               {confirmWarn ? (
                 <Button variant="primary" size="lg" icon={Send} busy={busy} onClick={() => submit(true)}>Kirim tetap</Button>
               ) : (
                 <Button variant="primary" size="lg" icon={requireCode ? Key : Send} busy={busy} onClick={() => submit(false)}>
-                  {existing?.submitted_at ? 'Perbarui laporan' : 'Kirim laporan'}
+                  {existing?.submitted_at ? (isAdmin && !existing.softfile_manual ? 'Simpan revisi' : 'Perbarui laporan') : 'Kirim laporan'}
                 </Button>
               )}
             </div>
