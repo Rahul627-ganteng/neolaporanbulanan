@@ -311,8 +311,8 @@ export function StoreProvider({ children }) {
 
     // ----- akun bagian -----
     bagianLogin: (departmentId, password, remember = true) => run(async () => {
-      const s = await adapter.departmentLogin(departmentId, password);
-      saveBagianSession(s, remember);
+      const s = { ...(await adapter.departmentLogin(departmentId, password)), remember: Boolean(remember) };
+      saveBagianSession(s, s.remember);
       setBagian(s);
       setDepartmentData((m) => {
         const next = { ...m };
@@ -335,7 +335,7 @@ export function StoreProvider({ children }) {
     bagianSetup: (profile, newCode) => run(async () => {
       const out = await adapter.departmentSetup(bagian?.token, profile, newCode);
       const s = { ...bagian, perlu_setup: false, kode_bersama: false };
-      saveBagianSession(s, true);
+      saveBagianSession(s, bagian?.remember !== false); // tetap di tempat semula (tidak diingat → sessionStorage)
       setBagian(s);
       setDepartmentData((m) => {
         const next = { ...m };

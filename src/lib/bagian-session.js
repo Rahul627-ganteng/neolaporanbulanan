@@ -25,7 +25,16 @@ export function loadBagianSession() {
       const raw = s.getItem(KEY);
       if (!raw) continue;
       const v = JSON.parse(raw);
-      if (v?.token && v?.department?.id && (!v.expires_at || Date.parse(v.expires_at) > Date.now())) return v;
+      if (v?.token && v?.department?.id && (!v.expires_at || Date.parse(v.expires_at) > Date.now())) {
+        // Sesi lama tanpa penanda: diingat bila tersimpan di localStorage.
+        let fromLocal = false;
+        try {
+          fromLocal = typeof localStorage !== 'undefined' && s === localStorage;
+        } catch {
+          /* penyimpanan diblokir */
+        }
+        return { ...v, remember: typeof v.remember === 'boolean' ? v.remember : fromLocal };
+      }
       s.removeItem(KEY);
     } catch {
       /* abaikan */
