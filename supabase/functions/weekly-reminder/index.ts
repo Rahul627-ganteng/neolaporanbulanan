@@ -86,7 +86,11 @@ Deno.serve(async (req) => {
     .from('monthly_cycles').select('*')
     .order('hijri_year', { ascending: false }).order('hijri_month', { ascending: false })
     .limit(1).maybeSingle();
-  const plan = planCycleRollover({ active: active0, latest, today });
+  const { data: latestActivated } = await db
+    .from('monthly_cycles').select('*').not('activated_at', 'is', null)
+    .order('hijri_year', { ascending: false }).order('hijri_month', { ascending: false })
+    .limit(1).maybeSingle();
+  const plan = planCycleRollover({ active: active0, latest, latestActivated, today });
   if (plan) {
     const { error: oErr } = await db.rpc('open_cycle_auto', {
       p_hijri_month: plan.hijri_month,
@@ -107,6 +111,9 @@ Deno.serve(async (req) => {
   const { data: cycle, error: cErr } = await db
     .from('monthly_cycles').select('*').eq('status', 'aktif').maybeSingle();
   if (cErr) return json({ error: cErr.message }, 500);
+  // open_cycle_auto tidak mengambil alih bulan yang pernah aktif: bila siklus aktif
+  // tidak berubah, tidak ada bulan yang dibuka.
+  if (opened && cycle && active0 && cycle.id === active0.id) opened = null;
   if (!cycle) return json({ skipped: 'Belum ada periode bulan aktif', opened });
 
   const week = body.week && body.week >= 1 && body.week <= 4 ? body.week : computeWeek(cycle, today);

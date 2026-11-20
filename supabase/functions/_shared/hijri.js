@@ -130,8 +130,15 @@ export function isoOfTimestamp(ts) {
  * berjalan), sedangkan input softfile-nya baru dibuka tanggal 20 (input_open_date).
  * Mengembalikan null bila tidak perlu membuka apa pun.
  */
-export function planCycleRollover({ active, latest, today }) {
-  const ref = active || latest || null;
+export function planCycleRollover({ active, latest, latestActivated, today }) {
+  // Patokan tenggat: bulan aktif, kecuali ada bulan lebih baru yang pernah aktif
+  // (admin mengaktifkan kembali bulan lama) — bulan baru baru dibuka setelah
+  // tenggat bulan terbaru itu. Bulan yang hanya disiapkan (activated_at kosong)
+  // tidak menjadi patokan agar tetap diaktifkan saat waktunya.
+  const key = (c) => c.hijri_year * 12 + c.hijri_month;
+  const cand = latestActivated || (latest && latest.activated_at ? latest : null);
+  const newer = cand && (!active || key(cand) > key(active)) ? cand : null;
+  const ref = newer || active || latest || null;
   if (ref && today <= ref.deadline_date) return null;
   const h = toHijri(today);
   let target = { month: h.month, year: h.year };
