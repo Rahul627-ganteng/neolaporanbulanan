@@ -113,6 +113,11 @@ export function StoreProvider({ children }) {
     // tertinggal setelah keluar), lalu muat ulang siklus tampilan DAN siklus sebelumnya
     // (target program & laporan terlambat bulan lalu).
     setReportsByCycle({});
+    // Data dasbor (isi laporan & kontak) dan daftar guru yang dimuat lewat jalur admin
+    // juga dibuang; formulir publik tidak boleh mengisi ulang dari cache admin.
+    setDepartmentData({});
+    setTeachers(null);
+    setPembimbingOptions(null);
     (async () => {
       const b = await refreshBase(adapter);
       const cyc = b.cycles.find((c) => c.id === viewCycleId) || b.cycles.find((c) => c.status === 'aktif');
@@ -330,6 +335,10 @@ export function StoreProvider({ children }) {
         delete next[id];
         return next;
       });
+      if (!isAdmin) {
+        setTeachers(null);
+        setPembimbingOptions(null);
+      }
       if (token) await adapter.departmentLogout(token).catch(() => {});
     }, 'Anda telah keluar dari akun bagian.'),
     bagianSetup: (profile, newCode) => run(async () => {
