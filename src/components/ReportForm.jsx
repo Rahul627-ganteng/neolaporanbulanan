@@ -24,7 +24,15 @@ const emptyForm = (cycleId = '') => ({
   programs: [{ judul: '', kategori: 'unggulan', target: '' }],
   pernyataan_inovatif: false,
   evaluasi: [],
+  // `${cycleId}:${departmentId}` bila isi formulir dimuat dari laporan yang sudah terkirim.
+  loaded_from: '',
 });
+
+// Isi laporan dikosongkan (nama pejabat tetap) agar isi bulan lain tidak ikut terkirim.
+const blankContent = () => {
+  const { hasil_usaha, kendala, solusi, programs, pernyataan_inovatif, loaded_from } = emptyForm();
+  return { hasil_usaha, kendala, solusi, programs, pernyataan_inovatif, loaded_from };
+};
 
 const SAMPLE = {
   hasil_usaha: [
@@ -156,7 +164,7 @@ export default function ReportForm({ go }) {
   useEffect(() => {
     if (isAdmin || !blockerCycle || !cycle) return;
     setSwitched({ from: cycle, to: blockerCycle });
-    setForm((f) => ({ ...f, cycle_id: blockerCycle.id, evaluasi: [] }));
+    setForm((f) => ({ ...f, cycle_id: blockerCycle.id, evaluasi: [], ...(f.loaded_from ? blankContent() : {}) }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [blockerCycle?.id, cycle?.id, isAdmin]);
 
@@ -182,9 +190,11 @@ export default function ReportForm({ go }) {
         programs: rep.programs?.length ? rep.programs.map((p) => ({ judul: p.judul, kategori: p.kategori, target: p.target || '' })) : [{ judul: '', kategori: 'unggulan', target: '' }],
         pernyataan_inovatif: false,
         evaluasi: [],
+        loaded_from: `${cycle.id}:${id}`,
       });
     } else {
       patch({
+        ...(form.loaded_from ? blankContent() : {}),
         department_id: id,
         sekretaris_nama: d?.sekretaris_nama || '',
         ketua_nama: d?.ketua_nama || '',
@@ -392,7 +402,8 @@ export default function ReportForm({ go }) {
                   value={form.cycle_id}
                   onChange={(e) => {
                     setSwitched(null);
-                    patch(asBagian ? { cycle_id: e.target.value, evaluasi: [] } : { cycle_id: e.target.value, department_id: '', evaluasi: [] });
+                    const reset = form.loaded_from ? blankContent() : {};
+                    patch(asBagian ? { ...reset, cycle_id: e.target.value, evaluasi: [] } : { ...reset, cycle_id: e.target.value, department_id: '', evaluasi: [] });
                   }}
                 >
                   {openCycles.map((c) => (
