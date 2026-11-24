@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { BellRing, Check, Copy, ListChecks, MessageCircle, Phone, Search, SkipForward, Zap } from 'lucide-react';
 import { useStore } from '../lib/store.jsx';
 import {
-  buildReminderMessage, formatWa, planReminderQueue, REMINDER_POLICY, ROLE_LABEL, RUNDOWN, STAGES, waLink,
+  buildReminderMessage, formatWa, planReminderQueue, prevReportBlocks, REMINDER_POLICY, ROLE_LABEL, RUNDOWN, STAGES, waLink,
 } from '../lib/constants.js';
 import { reportState, STATE_META } from '../lib/status.js';
 import { copyText } from '../lib/files.js';
@@ -129,7 +129,7 @@ export default function Rundown() {
       week: sel, role: r, department: d, cycle: viewCycle, reportCycle: billed || viewCycle,
       reportSubmitted: Boolean(billedMap.get(d.id)?.submitted_at), programs: targetsByDept.get(d.id) || [], portalUrl: PORTAL_URL,
       prevCycle,
-      prevPending: sel >= 2 && Boolean(prevCycle) && prevReportByDept.has(d.id) && !prevReportByDept.get(d.id)?.submitted_at,
+      prevPending: sel >= 2 && prevReportBlocks(prevCycle, prevReportByDept.get(d.id), today),
     });
 
   const prepareQueue = async () => {

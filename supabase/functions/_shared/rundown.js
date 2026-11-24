@@ -176,6 +176,18 @@ export function waLink(phone, text) {
 export const ROLE_LABEL = { ketua: 'Ketua', sekretaris: 'Sekretaris' };
 
 /**
+ * Apakah laporan bulan lalu yang belum terkirim menahan laporan bulan ini?
+ * Sama dengan aturan b di submit_report: hanya bulan yang input-nya sudah dibuka
+ * untuk bagian (tanggal buka sudah lewat dan tidak "hanya admin").
+ */
+export function prevReportBlocks(prevCycle, prevReport, today) {
+  if (!prevCycle || !prevReport || prevReport.submitted_at) return false;
+  if (prevCycle.input_closed_at) return false;
+  if (prevCycle.input_open_date && today && prevCycle.input_open_date > today) return false;
+  return true;
+}
+
+/**
  * Kebijakan antrean pengingat per minggu (dipakai pg_cron & tombol admin):
  *  - Minggu 1: bagian yang laporan bulan lalunya belum masuk (tenggat tgl 5).
  *  - Minggu 2: Ketua seluruh bagian (pelaksanaan & monitoring program).
@@ -349,7 +361,7 @@ export function planReminderQueue({
     if (d.is_active === false) continue;
     const submitted = Boolean(reports?.get(d.id)?.submitted_at);
     if (policy.scope === 'belum' && submitted) continue;
-    const prevPending = !billPrev && Boolean(prevCycle) && Boolean(prevReportByDept?.has(d.id)) && !prevReportByDept.get(d.id)?.submitted_at;
+    const prevPending = !billPrev && prevReportBlocks(prevCycle, prevReportByDept?.get(d.id), today);
     for (const role of policy.roles) {
       const phone = normalizeWa(role === 'ketua' ? d.ketua_wa : d.sekretaris_wa);
       items.push({
