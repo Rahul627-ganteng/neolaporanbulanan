@@ -26,7 +26,9 @@ export default function Dashboard({ go }) {
   const [belumOpen, setBelumOpen] = useState(false);
   const [card, setCard] = useState(null);
   const total = activeDepartments.length;
+  const activeIds = useMemo(() => new Set(activeDepartments.map((d) => d.id)), [activeDepartments]);
   const submitted = reports.filter((r) => r.submitted_at);
+  const submittedActive = submitted.filter((r) => activeIds.has(r.department_id)).length;
   const left = daysBetween(today, viewCycle.deadline_date);
   const deptById = useMemo(() => new Map(departments.map((d) => [d.id, d])), [departments]);
   const unggulan = submitted.flatMap((r) => (r.programs || []).filter((p) => p.kategori === 'unggulan'));
@@ -35,8 +37,8 @@ export default function Dashboard({ go }) {
   return (
     <div className="flex flex-col gap-6">
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat label="Softfile masuk" value={<span className="tabular-nums">{submitted.length}<span className="text-[18px] text-muted">/{total}</span></span>}>
-          <Progress value={submitted.length} max={total} className="mt-1" />
+        <Stat label="Softfile masuk" value={<span className="tabular-nums">{submittedActive}<span className="text-[18px] text-muted">/{total}</span></span>}>
+          <Progress value={submittedActive} max={total} className="mt-1" />
         </Stat>
         <Stat label="Belum lapor" value={<span className="tabular-nums">{belum.length}</span>} sub={belum.length ? 'bagian perlu diingatkan' : 'Alhamdulillah, lengkap'} />
         <Stat

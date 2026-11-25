@@ -391,12 +391,18 @@ export default function AdminPanel() {
   const { viewCycle, prevCycle, reports, prevReports, departments, activeDepartments, today, period } = useStore();
   const deptById = useMemo(() => new Map(departments.map((d) => [d.id, d])), [departments]);
   const total = activeDepartments.length;
-  const submitted = reports.filter((r) => r.submitted_at);
-  const prevStats = prevCycle && prevReports.length
-    ? { label: `${HIJRI_MONTHS[prevCycle.hijri_month - 1]} ${prevCycle.hijri_year}`, pct: Math.round((prevReports.filter((r) => r.submitted_at).length / total) * 100) }
+  // Statistik kepatuhan hanya menghitung bagian aktif (baris laporan bagian nonaktif tetap ada di tiap bulan).
+  const activeIds = useMemo(() => new Set(activeDepartments.map((d) => d.id)), [activeDepartments]);
+  const activeReports = reports.filter((r) => activeIds.has(r.department_id));
+  const submitted = activeReports.filter((r) => r.submitted_at);
+  // Tabel master: bagian aktif, ditambah laporan terkirim dari bagian yang kini nonaktif.
+  const tableReports = reports.filter((r) => activeIds.has(r.department_id) || r.submitted_at);
+  const prevActive = prevReports.filter((r) => activeIds.has(r.department_id));
+  const prevStats = prevCycle && prevActive.length && total
+    ? { label: `${HIJRI_MONTHS[prevCycle.hijri_month - 1]} ${prevCycle.hijri_year}`, pct: Math.round((prevActive.filter((r) => r.submitted_at).length / total) * 100) }
     : null;
 
-  const tepat = reports.filter((r) => reportState(r, viewCycle, today) === 'tepat').length;
+  const tepat = activeReports.filter((r) => reportState(r, viewCycle, today) === 'tepat').length;
   const kendalaTop = KENDALA_CATEGORIES.map((c) => ({ c, n: submitted.flatMap((r) => r.kendala || []).filter((k) => k.kategori === c.key).length })).sort((a, b) => b.n - a.n)[0];
   const ung = submitted.flatMap((r) => r.programs || []).filter((p) => p.kategori === 'unggulan').length;
 
@@ -412,12 +418,12 @@ export default function AdminPanel() {
         </p>
       </section>
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-        <ComplianceCard reports={reports} cycle={viewCycle} today={today} total={total} prevStats={prevStats} />
-        <FunnelCard reports={reports} total={total} />
+        <ComplianceCard reports={activeReports} cycle={viewCycle} today={today} total={total} prevStats={prevStats} />
+        <FunnelCard reports={activeReports} total={total} />
       </div>
       <CategoryCharts reports={submitted} cycle={viewCycle} />
       <Showcase reports={submitted} deptById={deptById} cycle={viewCycle} />
-      <MasterTable reports={reports} deptById={deptById} cycle={viewCycle} today={today} period={period} />
+      <MasterTable reports={tableReports} deptById={deptById} cycle={viewCycle} today={today} period={period} />
     </div>
   );
 }

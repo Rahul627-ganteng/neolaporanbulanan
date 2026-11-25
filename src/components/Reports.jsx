@@ -163,6 +163,8 @@ export default function Reports({ go }) {
     return reports
       .map((r) => ({ r, d: deptById.get(r.department_id) }))
       .filter(({ r, d }) => d && (!needle || d.nama.toLowerCase().includes(needle)))
+      // Bagian nonaktif hanya tampil bila laporannya terkirim.
+      .filter(({ r, d }) => r.submitted_at || d.is_active !== false)
       .filter(({ r }) => (filter === 'masuk' ? r.submitted_at : filter === 'belum' ? !r.submitted_at : true))
       .sort((a, b) => a.d.no - b.d.no);
   }, [reports, deptById, q, filter]);
