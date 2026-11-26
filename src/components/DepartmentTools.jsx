@@ -303,6 +303,8 @@ export function ImportDepartmentsModal({ open, onClose }) {
   const sorted = useMemo(() => [...departments].sort((a, b) => a.no - b.no), [departments]);
   const result = useMemo(() => (table ? mapRows(table, sorted) : null), [table, sorted]);
   const changes = result ? result.items.filter((i) => i.changed.length) : [];
+  // Baris dengan peringatan (WA tidak valid, cocok lewat nomor) tetap ditampilkan walau tanpa perubahan.
+  const shown = result ? result.items.filter((i) => i.changed.length || i.waIssues.length) : [];
 
   const close = () => {
     setText('');
@@ -409,7 +411,7 @@ export function ImportDepartmentsModal({ open, onClose }) {
                 <ul className="list-disc pl-4">{result.unmatched.slice(0, 5).map((u) => <li key={u}>{u}</li>)}</ul>
               </Callout>
             )}
-            {changes.length > 0 && (
+            {shown.length > 0 && (
               <div className="max-h-[38vh] overflow-auto rounded-lg border border-line">
                 <table className="w-full min-w-[640px] text-left text-[12.5px]">
                   <thead className="sticky top-0 bg-mist text-[11px] uppercase tracking-[0.08em] text-muted">
@@ -421,7 +423,7 @@ export function ImportDepartmentsModal({ open, onClose }) {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-line align-top">
-                    {changes.map(({ dept, next, waIssues }) => (
+                    {shown.map(({ dept, next, waIssues }) => (
                       <tr key={dept.id}>
                         <td className="py-2 pl-3 pr-2 font-semibold text-ink">
                           {dept.no}. {dept.nama}

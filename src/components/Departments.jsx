@@ -130,7 +130,7 @@ function SharedCodeCard({ access, onSaved }) {
             <Input id="shared-code" className="w-48 font-mono uppercase tracking-[0.18em]" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} />
           </Field>
           <Button icon={Shuffle} variant="ghost" onClick={() => setCode(randomCode())}>Acak</Button>
-          <Button variant="primary" busy={busy} disabled={code.trim().length < 6} onClick={save}>Simpan</Button>
+          <Button variant="primary" busy={busy} disabled={code.trim() ? code.trim().length < 6 : !current} onClick={save}>{code.trim() ? 'Simpan' : 'Simpan (nonaktifkan)'}</Button>
           {current && <Button variant="ghost" onClick={() => { setCode(''); }}>Kosongkan</Button>}
           <p className="w-full text-[12px] text-muted">Mengganti kode awal tidak memengaruhi bagian yang sudah membuat kode sendiri. Kosongkan lalu simpan untuk menonaktifkan.</p>
         </div>
