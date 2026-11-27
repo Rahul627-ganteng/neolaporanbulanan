@@ -156,7 +156,9 @@ export function OpenCycleModal({ open, onClose }) {
 }
 
 export default function Periods({ onOpenCycle }) {
-  const { periods, cycles, viewCycle, reportsByCycle, actions, loadReports, today } = useStore();
+  const { periods, cycles, viewCycle, reportsByCycle, actions, loadReports, today, activeDepartments } = useStore();
+  // Kolom "Masuk" hanya menghitung bagian aktif (sama dengan Panel Admin & Dasbor).
+  const activeIds = useMemo(() => new Set(activeDepartments.map((d) => d.id)), [activeDepartments]);
   const latestPeriod = [...periods].sort((a, b) => b.label_hijri.localeCompare(a.label_hijri))[0];
   const [next, setNext] = useState(() => (latestPeriod ? nextAcademicLabels(latestPeriod) : { label_masehi: '2026-2027', label_hijri: '1447-1448' }));
   const [editDates, setEditDates] = useState(null);
@@ -239,7 +241,7 @@ export default function Periods({ onOpenCycle }) {
               </thead>
               <tbody className="divide-y divide-line">
                 {cycles.map((c) => {
-                  const reps = reportsByCycle[c.id];
+                  const reps = reportsByCycle[c.id] ? reportsByCycle[c.id].filter((r) => activeIds.has(r.department_id)) : null;
                   const n = reps ? reps.filter((r) => r.submitted_at).length : null;
                   return (
                     <tr key={c.id} className={c.id === viewCycle?.id ? 'bg-sky-wash/60' : ''}>
